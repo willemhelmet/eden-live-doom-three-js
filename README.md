@@ -19,12 +19,20 @@ The key stays in the page's memory and is sent directly to the official Reactor 
 
 ## Deploy a public BYOK demo
 
+### GitHub Pages
+
+The included [Pages workflow](.github/workflows/pages.yml) builds the app, runs the Node tests and browser suite under the repository URL path, and publishes `dist/` on pushes to `main`. In a fork, enable **Settings → Pages → Source → GitHub Actions**. No API key or repository secret is required.
+
+This repository's Pages URL is [willemhelmet.github.io/eden-live-doom-three-js](https://willemhelmet.github.io/eden-live-doom-three-js/). The build uses relative asset URLs so it also works at a domain root or a different repository path.
+
+### Other static hosts
+
 ```sh
 npm ci
 npm run build
 ```
 
-Publish **`dist/`** to an HTTPS static host. On Vercel, import this repo with framework **Other**, build command **`npm run build`**, and output directory **`dist`**. The included `vercel.json` supplies those settings. No functions or environment secrets are required. The build copies the game, WAD, Three.js modules, reference image, fonts and brand assets into the output; it does not depend on the Node preview server. Preserve `/doom/index.html` directory routing and serve `.mjs` as JavaScript. Avoid a blanket SPA fallback that hides missing assets.
+Publish **`dist/`** to an HTTPS static host. On Vercel, import this repo with framework **Other**, build command **`npm run build`**, and output directory **`dist`**. The included `vercel.json` supplies those settings if you prefer Vercel. No functions or environment secrets are required. The build copies the game, WAD, Three.js modules, reference image, fonts and brand assets into the output; it does not depend on the Node preview server. Preserve `/doom/index.html` directory routing and serve `.mjs` as JavaScript. Avoid a blanket SPA fallback that hides missing assets.
 
 For a local production preview, use `npm run build && npm start`. Optional `.env` configuration only sets `PORT` (default 3210). HTTPS or localhost is required for browser capture and clipboard features. Initial model connection needs cloud capacity and internet access.
 

@@ -7,6 +7,7 @@ type Frame = { source: HTMLCanvasElement; overlay: HTMLCanvasElement; view: Layo
 type Bridge = { ready: boolean; source: HTMLCanvasElement; frames: number; onFrame: (fn: (frame: Frame) => void) => void; setEnabled: (enabled: boolean) => void; suspend: (value: boolean) => void; focus: () => void };
 type DoomWindow = Window & { doomBridge?: Bridge };
 type View = 'raw' | 'eden' | 'compare';
+const assetUrl = (path: string) => new URL(path, document.baseURI).href;
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const iframe = element<HTMLIFrameElement>('doom');
 const stage = element('stage');
@@ -281,13 +282,13 @@ element('reset').onclick = async () => {
   if (closing) return;
   await stop();
   bridge = undefined; syncGameAccess();
-  iframe.src = `/doom/?-iwad=doom1.wad&-warp=1%201&-skill=2&-nomusic&take=${Date.now()}`;
+  iframe.src = assetUrl(`doom/?-iwad=doom1.wad&-warp=1%201&-skill=2&-nomusic&take=${Date.now()}`);
 };
 reference.onchange = () => {
   if (referenceObjectUrl) URL.revokeObjectURL(referenceObjectUrl);
   referenceObjectUrl = reference.files?.[0] ? URL.createObjectURL(reference.files[0]) : null;
   if (referenceObjectUrl) referencePreview.src = referenceObjectUrl;
-  else if (referenceMode.value === 'greenhouse') referencePreview.src = '/appearance-greenhouse.png';
+  else if (referenceMode.value === 'greenhouse') referencePreview.src = assetUrl('appearance-greenhouse.png');
   else if (bridge?.ready) referencePreview.src = bridge.source.toDataURL('image/png');
 };
 referenceMode.onchange = () => { reference.value = ''; reference.onchange?.(new Event('change')); };
@@ -333,7 +334,7 @@ function hasPicture(video: HTMLVideoElement) {
 }
 
 async function builtInReference() {
-  const response = await fetch('/appearance-greenhouse.png');
+  const response = await fetch(assetUrl('appearance-greenhouse.png'));
   if (!response.ok) throw new Error('The bundled appearance reference is missing. Rebuild the app or choose Current Doom frame in the reference selector.');
   return new File([await response.blob()], 'orbital-greenhouse.png', { type: 'image/png' });
 }

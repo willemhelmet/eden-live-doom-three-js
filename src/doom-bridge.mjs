@@ -1,7 +1,7 @@
-import { renderer, I_GetCanvasView } from '/doom/src/i_video.js';
-import * as state from '/doom/src/doomstat.js';
-import { wipe_isActive } from '/doom/src/f_wipe.js';
-import { readPad, applyPad, applyDemoPace, rising } from '/doom/deck-input.mjs';
+import { renderer, I_GetCanvasView } from './src/i_video.js';
+import * as state from './src/doomstat.js';
+import { wipe_isActive } from './src/f_wipe.js';
+import { readPad, applyPad, applyDemoPace, rising } from './deck-input.mjs';
 
 const source = document.createElement('canvas');
 source.width = 1280;

@@ -7,7 +7,8 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 export const MODEL = 'reactor/eden-live';
 const mime = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.wasm': 'application/wasm', '.wad': 'application/octet-stream', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.ttf': 'font/ttf' };
 
-export async function startServer({ port = 3210, dev = false } = {}) {
+export async function startServer({ port = 3210, dev = false, mountPath = '/' } = {}) {
+  if (!/^\/(?:[a-zA-Z0-9_-]+\/)*$/.test(mountPath) || (dev && mountPath !== '/')) throw new Error('Use a slash-delimited static mount path, or / for development.');
   const vite = dev ? await (await import('vite')).createServer({ root, server: { middlewareMode: true, allowedHosts: ['127.0.0.1', 'localhost'] }, appType: 'spa' }) : null;
   let origin;
   const json = (res, status, data) => {
@@ -22,6 +23,10 @@ export async function startServer({ port = 3210, dev = false } = {}) {
       }
       const url = new URL(req.url, origin);
       if (url.pathname === '/api/config' && req.method === 'GET') return json(res, 200, { byok: true, model: MODEL, inputFps: 24 });
+      if (mountPath !== '/') {
+        if (!url.pathname.startsWith(mountPath)) return json(res, 404, { error: 'Not found.' });
+        url.pathname = url.pathname.slice(mountPath.length - 1);
+      }
       if (url.pathname.startsWith('/api/')) return json(res, 404, { error: 'Unknown endpoint.' });
       if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'Method not allowed.' });
 
@@ -54,7 +59,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   try { process.loadEnvFile(path.join(root, '.env')); } catch (e) { if (e.code !== 'ENOENT') throw e; }
   const port = Number(process.env.PORT || 3210);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be between 1 and 65535.');
-  const app = await startServer({ port, dev: process.argv.includes('--dev') });
+  const app = await startServer({ port, dev: process.argv.includes('--dev'), mountPath: process.env.DEMO_BASE_PATH || '/' });
   console.log(`\nReactor / Doom → ${app.origin}\nBring your own key in the browser. This server never handles Reactor credentials.\n`);
   const close = async () => { await app.close(); process.exit(0); };
   process.on('SIGINT', close);

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 async function boot(page) {
-  await page.goto('/');
+  await page.goto('./');
   await expect.poll(() => page.frames().find(frame => frame.url().includes('/doom/'))?.evaluate(() => !!window.doomBridge?.ready), { timeout: 40_000 }).toBe(true);
   return page.frames().find((frame) => frame.url().includes('/doom/'));
 }
@@ -48,7 +48,7 @@ test('keyboard and analog gamepad move the real Doom player; unplug releases mov
   await page.locator('#doom').focus();
   await page.keyboard.down('w');
   await expect.poll(() => frame.evaluate(async () => {
-    const state = await import('/doom/src/doomstat.js');
+    const state = await import(new URL('src/doomstat.js', location.href).href);
     return state.players[state.consoleplayer].cmd.forwardmove;
   })).toBe(6);
   await page.waitForTimeout(350); await page.keyboard.up('w');
@@ -60,7 +60,7 @@ test('keyboard and analog gamepad move the real Doom player; unplug releases mov
   });
   await page.waitForTimeout(400);
   const analogCommand = await frame.evaluate(async () => {
-    const state = await import('/doom/src/doomstat.js');
+    const state = await import(new URL('src/doomstat.js', location.href).href);
     return { forward: state.players[state.consoleplayer].cmd.forwardmove, turn: state.players[state.consoleplayer].cmd.angleturn };
   });
   expect(analogCommand.forward).toBe(6);
@@ -94,7 +94,7 @@ test('a rejected saved key restores the locked preview, and restart reloads the 
 });
 
 test('theater mode has a touch-accessible way back to setup', async ({ page }) => {
-  await page.goto('/?theater=1');
+  await page.goto('./?theater=1');
   const control = page.getByRole('button', { name: 'Show demo controls' });
   await expect(control).toBeVisible();
   await control.click();

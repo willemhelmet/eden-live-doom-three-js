@@ -3,7 +3,7 @@
 ## Public BYOK version
 
 - Production TypeScript, Vite and static packaging build pass. `dist/` contains the game source, WAD, bridge, Three.js modules, reference and Reactor brand assets.
-- All **13 Node tests** and **7 Chromium browser tests** pass.
+- All **13 Node tests** and **7 Chromium browser tests** pass. The browser suite also passes with the app mounted strictly at `/eden-live-doom-three-js/`, including the game, reference image, reset, controls and key flow.
 - Browser tests boot the actual game, inspect rendered source pixels, move the player with keyboard and emulated standard-gamepad input, verify slower movement and release, and restart the level.
 - Key-entry validation above the canvas hides the red notice only after Reactor accepts the key, without opening a model session. Clearing or rejecting the key restores the notice, disables the centered Start button, darkens the preview and blocks keyboard/controller movement.
 - Browser BYOK tests intercept the official Reactor token URL using a fake key. They verify direct key headers, single-session scope, sanitized provider errors, cleanup, no local token broker, no browser storage of the key, and an empty key field after reload. Copied settings exclude the key; Clear resets the reveal control.
