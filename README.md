@@ -13,9 +13,9 @@ npm ci
 npm run dev
 ```
 
-Open **http://127.0.0.1:3210/**. The Doom preview stays dimmed and inactive until a key is validated. In the red notice above the canvas, paste your Reactor key, choose the matching environment, and select **Use key**. The notice disappears and the centered Start button unlocks after Reactor accepts it. This checks the key without starting a model session. Edit the prompt/reference/seed, then select **Start Eden** in the canvas. Cloud usage is charged to your Reactor account. **Stop Eden** below the canvas disconnects and returns to the preview; stop before changing settings. **Copy config** exports the appearance settings without credentials.
+Open **http://127.0.0.1:3210/**. The Doom preview stays dimmed and inactive until a key is validated. In the red notice above the canvas, paste your Reactor production key and select **Use key**. The notice disappears and the centered Start button unlocks after Reactor accepts it. This checks the key without starting a model session. Edit the prompt/reference/seed, then select **Start Eden** in the canvas. Cloud usage is charged to your Reactor account. **Stop Eden** below the canvas disconnects and returns to the preview; stop before changing settings. **Copy config** exports the appearance settings without credentials.
 
-The key stays in the page's memory and is sent directly to the selected official Reactor API to obtain a scoped token for one EdenLive session. It is never sent to the demo host, saved in local/session storage, or included in copied configuration. Refresh or **Clear key** removes it. No server key or `.env` credential is needed. Never add a key to `VITE_*` variables or commit one to the repo.
+The key stays in the page's memory and is sent directly to the official Reactor production API to obtain a scoped token for one EdenLive session. It is never sent to the demo host, saved in local/session storage, or included in copied configuration. Refresh or **Clear key** removes it. No server key or `.env` credential is needed. Never add a key to `VITE_*` variables or commit one to the repo.
 
 ## Deploy a public BYOK demo
 

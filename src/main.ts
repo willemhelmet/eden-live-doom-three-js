@@ -23,7 +23,6 @@ const prompt = element<HTMLTextAreaElement>('prompt');
 const reference = element<HTMLInputElement>('reference');
 const referenceMode = element<HTMLSelectElement>('reference-mode');
 const apiKey = element<HTMLInputElement>('api-key');
-const environment = element<HTMLSelectElement>('environment');
 const seed = element<HTMLInputElement>('seed');
 const keyAlert = element('key-alert');
 const keyMessage = element('key-message');
@@ -59,7 +58,7 @@ async function validateKey() {
   validateButton.disabled = true; validateButton.textContent = 'Checking…';
   keyMessage.textContent = 'Checking your Reactor key…';
   try {
-    await mintToken({ apiKey: apiKey.value.trim(), apiUrl: REACTOR_ENDPOINTS[environment.value as keyof typeof REACTOR_ENDPOINTS], signal: controller.signal });
+    await mintToken({ apiKey: apiKey.value.trim(), apiUrl: REACTOR_ENDPOINTS.production, signal: controller.signal });
     if (keyValidation !== controller) return;
     setKeyAccepted(true);
     status.textContent = 'Ready to connect.';
@@ -112,7 +111,6 @@ function syncGameAccess() {
 function lockSettings(locked: boolean) {
   element<HTMLFieldSetElement>('world-settings').disabled = locked;
   apiKey.readOnly = locked;
-  environment.disabled = locked;
   validateButton.disabled = locked || !!keyValidation;
 }
 function showError(error: unknown) {
@@ -216,7 +214,7 @@ async function start() {
       bridge!.source.toBlob((blob) => blob ? resolve(new File([blob], 'doom-opening.png', { type: 'image/png' })) : reject(new Error('Could not capture the opening frame.')), 'image/png');
     }));
     if (session !== active) return;
-    await active.start({ apiKey: apiKey.value.trim(), apiUrl: REACTOR_ENDPOINTS[environment.value as keyof typeof REACTOR_ENDPOINTS], canvas: bridge.source, reference: image, prompt: prompt.value.trim(), seed: chosenSeed });
+    await active.start({ apiKey: apiKey.value.trim(), apiUrl: REACTOR_ENDPOINTS.production, canvas: bridge.source, reference: image, prompt: prompt.value.trim(), seed: chosenSeed });
     generationStarted = true;
   } catch (error) {
     if (session !== active) return;
@@ -274,7 +272,6 @@ element('show-key').onclick = () => {
 element('forget-key').onclick = () => { invalidateKey(); apiKey.value = ''; maskKey(); void stop(); };
 validateButton.onclick = () => void validateKey();
 apiKey.addEventListener('input', invalidateKey);
-environment.addEventListener('change', invalidateKey);
 apiKey.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); void validateKey(); } });
 element('copy-config').onclick = () => void copyText(JSON.stringify({ model: 'reactor/eden-live', source: 'client', prompt: prompt.value.trim(), seed: Number(seed.value), reference: reference.files?.[0]?.name ?? (referenceMode.value === 'greenhouse' ? 'appearance-greenhouse.png' : 'current-frame'), inputFps: 24 }, null, 2));
 element('copy-quickstart').onclick = () => void copyText(element('quickstart-code').textContent ?? '');

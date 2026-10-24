@@ -19,11 +19,9 @@
         <section id="key-alert" class="connection-panel" aria-label="API key required">
           <div class="key-alert-heading"><strong id="key-message" role="alert">Add your Reactor API key to connect.</strong><a href="https://www.reactor.inc/account/api-keys" target="_blank" rel="noreferrer">Get a key ↗</a></div>
           <div class="key-entry">
-            <div class="key-field"><label class="sr-only" for="api-key">Your Reactor API key</label><div class="key-input"><input id="api-key" type="password" placeholder="Paste your API key" autocomplete="off" spellcheck="false" autocapitalize="off" aria-describedby="key-privacy"><button id="show-key" class="quiet" aria-label="Show API key" aria-pressed="false">Show</button></div></div>
+            <div class="key-field"><label class="sr-only" for="api-key">Your Reactor API key</label><div class="key-input"><input id="api-key" type="password" placeholder="Paste your API key" autocomplete="off" spellcheck="false" autocapitalize="off"><button id="show-key" class="quiet" aria-label="Show API key" aria-pressed="false">Show</button></div></div>
             <button id="validate-key">Use key</button>
           </div>
-          <div class="key-meta"><div class="environment-row"><label for="environment">Environment</label><select id="environment"><option value="production">Production</option><option value="development">Development</option></select></div>
-          <p id="key-privacy" class="note">Kept in this tab. Sent directly to Reactor. Your account pays for usage.</p></div>
         </section>
         <div class="connection-state"><span id="key-summary" hidden>Key accepted for this tab.</span><button id="forget-key" class="quiet">Clear key</button></div>
     </section>
