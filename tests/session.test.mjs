@@ -29,6 +29,7 @@ function fixture(overrides = {}) {
 
 test('session stages appearance only after transport readiness, then releases capture on stop', async () => {
   const f = fixture();
+  f.session.onAuthenticated = () => { assert.deepEqual(f.calls, []); };
   await f.session.start(f.options);
   assert.deepEqual(f.calls, ['connect', 'publish', 'setSource', 'setPaused', 'upload', 'setImage', 'setPrompt', 'start']);
   await f.session.stop(); await f.session.stop();

@@ -3,8 +3,9 @@
 ## Public BYOK version
 
 - Production TypeScript, Vite and static packaging build pass. `dist/` contains the game source, WAD, bridge, Three.js modules, reference and Reactor brand assets.
-- All **13 Node tests** and **6 Chromium browser tests** pass.
+- All **13 Node tests** and **7 Chromium browser tests** pass.
 - Browser tests boot the actual game, inspect rendered source pixels, move the player with keyboard and emulated standard-gamepad input, verify slower movement and release, and restart the level.
+- Key-entry validation hides the red notice only after Reactor accepts the key, without opening a model session. Clearing or rejecting the key restores the notice.
 - Browser BYOK tests intercept the official Reactor token URL using a fake key. They verify direct key headers, single-session scope, sanitized provider errors, cleanup, no local token broker, no browser storage of the key, and an empty key field after reload. Copied settings exclude the key; Clear resets the reveal control.
 - Static server tests verify game/brand dependency routes, hidden-file blocking, and the absence of a server-key fallback even with a server environment credential present.
 - API CORS preflight accepts a cross-origin browser token request with the Reactor API key header. The browser tests mock token rejection; a new paid cloud session has not been run through the BYOK UI.

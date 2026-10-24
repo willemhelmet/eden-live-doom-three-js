@@ -3,6 +3,10 @@ export const REACTOR_ENDPOINTS = Object.freeze({
   development: 'https://api.rea.live',
 });
 
+export class ReactorAuthError extends Error {
+  constructor(message) { super(message); this.name = 'ReactorAuthError'; }
+}
+
 export async function mintToken({ apiKey, apiUrl, signal }, fetchImpl = fetch) {
   if (!apiKey?.trim()) throw new Error('Add your Reactor API key to start EdenLive. You can play the original without one.');
   if (!Object.values(REACTOR_ENDPOINTS).includes(apiUrl)) throw new Error('Choose an official Reactor API endpoint.');
@@ -16,8 +20,8 @@ export async function mintToken({ apiKey, apiUrl, signal }, fetchImpl = fetch) {
   });
   // Do not display upstream error bodies; they can echo request details.
   if (!response.ok) {
-    if (response.status === 401) throw new Error('That API key was not accepted. Check the key and selected environment.');
-    if (response.status === 403) throw new Error('This key does not have access to EdenLive. Check your Reactor account permissions.');
+    if (response.status === 401) throw new ReactorAuthError('That API key was not accepted. Check the key and selected environment.');
+    if (response.status === 403) throw new ReactorAuthError('This key does not have access to EdenLive. Check your Reactor account permissions.');
     if (response.status === 429 || response.status === 503) throw new Error('Reactor is busy or your account has reached a limit. Wait a moment and try again.');
     throw new Error(`Reactor could not create a token (${response.status}). Try again shortly.`);
   }

@@ -1,6 +1,6 @@
 import './style.css';
 import { EdenSession } from './session';
-import { REACTOR_ENDPOINTS } from './auth.mjs';
+import { REACTOR_ENDPOINTS, ReactorAuthError, mintToken } from './auth.mjs';
 
 type Layout = { canvasWidth: number; canvasHeight: number; viewX: number; viewY: number; viewWidth: number; viewHeight: number };
 type Frame = { source: HTMLCanvasElement; overlay: HTMLCanvasElement; view: Layout; menu: boolean; now: number };
@@ -23,6 +23,51 @@ const referenceMode = element<HTMLSelectElement>('reference-mode');
 const apiKey = element<HTMLInputElement>('api-key');
 const environment = element<HTMLSelectElement>('environment');
 const seed = element<HTMLInputElement>('seed');
+const keyAlert = element('key-alert');
+const keyMessage = element('key-message');
+const validateButton = element<HTMLButtonElement>('validate-key');
+let keyValidation: AbortController | null = null;
+let keyAccepted = false;
+
+function setKeyAccepted(accepted: boolean, message = 'Add your Reactor API key to connect.') {
+  keyAccepted = accepted;
+  keyAlert.hidden = accepted;
+  element('key-summary').hidden = !accepted;
+  keyMessage.textContent = message;
+  if (accepted) maskKey();
+}
+function invalidateKey() {
+  keyValidation?.abort(); keyValidation = null;
+  validateButton.disabled = false; validateButton.textContent = 'Use key';
+  setKeyAccepted(false);
+}
+function maskKey() {
+  apiKey.type = 'password';
+  element('show-key').textContent = 'Show';
+  element('show-key').setAttribute('aria-pressed', 'false');
+  element('show-key').setAttribute('aria-label', 'Show API key');
+}
+async function validateKey() {
+  if (session || closing || keyValidation) return;
+  if (!apiKey.value.trim()) { setKeyAccepted(false); apiKey.focus(); return; }
+  const controller = new AbortController();
+  keyValidation = controller;
+  const timeout = window.setTimeout(() => controller.abort(), 20_000);
+  validateButton.disabled = true; validateButton.textContent = 'Checking…';
+  keyMessage.textContent = 'Checking your Reactor key…';
+  try {
+    await mintToken({ apiKey: apiKey.value.trim(), apiUrl: REACTOR_ENDPOINTS[environment.value as keyof typeof REACTOR_ENDPOINTS], signal: controller.signal });
+    if (keyValidation !== controller) return;
+    setKeyAccepted(true);
+    status.textContent = 'Ready to connect.';
+  } catch (error) {
+    if (keyValidation !== controller) return;
+    setKeyAccepted(false, controller.signal.aborted ? 'Reactor did not respond. Check your connection and try again.' : error instanceof Error ? error.message : 'Could not check this key. Try again.');
+  } finally {
+    clearTimeout(timeout);
+    if (keyValidation === controller) { keyValidation = null; validateButton.disabled = false; validateButton.textContent = 'Use key'; }
+  }
+}
 const referencePreview = document.querySelector<HTMLImageElement>('.reference-preview img')!;
 let referenceObjectUrl: string | null = null;
 let bridge: Bridge | undefined;
@@ -51,8 +96,15 @@ function lockSettings(locked: boolean) {
   element<HTMLFieldSetElement>('world-settings').disabled = locked;
   apiKey.readOnly = locked;
   environment.disabled = locked;
+  validateButton.disabled = locked || !!keyValidation;
 }
 function showError(error: unknown) {
+  if (error instanceof ReactorAuthError) {
+    setKeyAccepted(false, error.message);
+    apiKey.focus({ preventScroll: true });
+    keyAlert.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return;
+  }
   errorBox.textContent = error instanceof Error ? error.message : String(error);
   errorBox.hidden = false;
 }
@@ -67,7 +119,7 @@ function bindGame() {
   if (!bridge?.ready) return;
   connect.disabled = closing;
   connect.textContent = 'Start Eden';
-  status.textContent = 'Original ready. Add your key to transform it.';
+  status.textContent = keyAccepted ? 'Ready to connect.' : 'Original ready. Add your key to transform it.';
   bridge.onFrame((frame) => {
     currentMenu = frame.menu;
     // Place only the generated WORLD in the original viewport. Doom's HUD,
@@ -94,8 +146,8 @@ function bindGame() {
 }
 
 async function start() {
-  if (session || closing || !bridge?.ready) return;
-  if (!apiKey.value.trim()) { showError(new Error('Add your Reactor API key to start EdenLive. The original is free to play.')); apiKey.focus(); return; }
+  if (session || closing || keyValidation || !bridge?.ready) return;
+  if (!apiKey.value.trim()) { setKeyAccepted(false); apiKey.focus(); return; }
   if (!prompt.value.trim()) { showError(new Error('Enter an appearance prompt.')); prompt.focus(); return; }
   const chosenSeed = Number(seed.value);
   if (!seed.value || !Number.isInteger(chosenSeed) || chosenSeed < 0 || chosenSeed > 2147483647) { showError(new Error('Choose a seed between 0 and 2147483647.')); seed.focus(); return; }
@@ -111,6 +163,7 @@ async function start() {
   lockSettings(true);
   bridge.setEnabled(false);
   bridge.suspend(true);
+  active.onAuthenticated = () => { if (session === active) setKeyAccepted(true); };
   active.onStage = (text) => { if (session === active && !live) element('waiting-text').textContent = text; };
   active.onError = (error) => { if (session === active) { showError(error); void stop(); } };
   active.onChunk = (chunks) => { if (session === active) generatedChunks = chunks; };
@@ -206,8 +259,11 @@ element('show-key').onclick = () => {
   element('show-key').setAttribute('aria-pressed', String(reveal));
   element('show-key').setAttribute('aria-label', reveal ? 'Hide API key' : 'Show API key');
 };
-element('forget-key').onclick = () => { apiKey.value = ''; apiKey.type = 'password'; element('show-key').textContent = 'Show'; element('show-key').setAttribute('aria-pressed', 'false'); element('show-key').setAttribute('aria-label', 'Show API key'); void stop(); };
-apiKey.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); void start(); } });
+element('forget-key').onclick = () => { invalidateKey(); apiKey.value = ''; maskKey(); void stop(); };
+validateButton.onclick = () => void validateKey();
+apiKey.addEventListener('input', invalidateKey);
+environment.addEventListener('change', invalidateKey);
+apiKey.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); void validateKey(); } });
 element('copy-config').onclick = () => void copyText(JSON.stringify({ model: 'reactor/eden-live', source: 'client', prompt: prompt.value.trim(), seed: Number(seed.value), reference: reference.files?.[0]?.name ?? (referenceMode.value === 'greenhouse' ? 'appearance-greenhouse.png' : 'current-frame'), inputFps: 24 }, null, 2));
 element('copy-quickstart').onclick = () => void copyText(element('quickstart-code').textContent ?? '');
 document.addEventListener('focusin', () => bridge?.setEnabled(!isEditing(document.activeElement)));
@@ -248,7 +304,7 @@ window.addEventListener('keydown', (event) => {
   if (event.code === 'KeyV') { event.preventDefault(); cycle(); }
 });
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) document.body.classList.remove('theater'); });
-window.addEventListener('pagehide', () => { void session?.stop(); });
+window.addEventListener('pagehide', () => { keyValidation?.abort(); void session?.stop(); });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && session) { toast('Cloud session stopped while the page was hidden.'); void stop(); }
 });

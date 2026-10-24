@@ -62,7 +62,7 @@ test('keyboard and analog gamepad move the real Doom player; unplug releases mov
 test('cloud failures return to the playable original, and restart boots a fresh level', async ({ page }) => {
   await boot(page);
   await page.getByRole('button', { name: 'Start Eden', exact: true }).click();
-  await expect(page.locator('#error')).toContainText('Add your Reactor API key');
+  await expect(page.locator('#key-message')).toContainText('Add your Reactor API key');
   await expect(page.locator('#waiting')).toBeHidden();
   await expect(page.getByRole('button', { name: 'Start Eden', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Restart level', exact: true }).click();
@@ -91,10 +91,11 @@ test('BYOK requests go directly to Reactor and failures never echo keys', async 
   await boot(page);
   await page.getByLabel('Your Reactor API key').fill(key);
   await page.getByRole('button', { name: 'Start Eden', exact: true }).click();
-  await expect(page.locator('#error')).toContainText('That API key was not accepted');
-  await expect(page.locator('#error')).not.toContainText(key);
+  await expect(page.locator('#key-message')).toContainText('That API key was not accepted');
+  await expect(page.locator('#key-message')).not.toContainText(key);
   await expect(page.locator('#waiting')).toBeHidden();
   await expect(page.getByLabel('Your Reactor API key')).toBeEditable();
+  await expect(page.getByLabel('Your Reactor API key')).toBeFocused();
   expect(tokenRequest.headers()['reactor-api-key']).toBe(key);
   expect(tokenRequest.postDataJSON().authorization_details[0].constraints.max_sessions).toBe(1);
   expect(brokerRequests).toBe(0);
@@ -118,4 +119,33 @@ test('remix config excludes credentials and clear key resets reveal state', asyn
   await page.getByRole('button', { name: 'Clear key' }).click();
   await expect(page.getByLabel('Your Reactor API key')).toHaveValue('');
   await expect(page.getByLabel('Your Reactor API key')).toHaveAttribute('type', 'password');
+});
+
+
+test('Use key validates without starting a model session and clearing restores the key alert', async ({ page }) => {
+  let tokenRequests = 0;
+  let modelRequests = 0;
+  page.on('request', request => {
+    if (request.url().startsWith('https://api.reactor.inc/') && !request.url().endsWith('/tokens')) modelRequests++;
+  });
+  await page.route('https://api.reactor.inc/tokens', async route => {
+    tokenRequests++;
+    await route.fulfill({ status: tokenRequests === 1 ? 200 : 401, contentType: 'application/json', body: tokenRequests === 1 ? JSON.stringify({ jwt: 'fake-validation-token' }) : '{}' });
+  });
+  await boot(page);
+  await expect(page.locator('#key-alert')).toBeVisible();
+  await page.getByLabel('Your Reactor API key').fill('validation-test-key');
+  await page.getByRole('button', { name: 'Use key', exact: true }).click();
+  await expect(page.locator('#key-alert')).toBeHidden();
+  await expect(page.locator('#key-summary')).toBeVisible();
+  await expect(page.locator('#waiting')).toBeHidden();
+  expect(modelRequests).toBe(0);
+  await page.getByRole('button', { name: 'Clear key' }).click();
+  await expect(page.locator('#key-alert')).toBeVisible();
+  await expect(page.getByLabel('Your Reactor API key')).toHaveValue('');
+  await page.getByLabel('Your Reactor API key').fill('rejected-test-key');
+  await page.getByRole('button', { name: 'Use key', exact: true }).click();
+  await expect(page.locator('#key-message')).toContainText('That API key was not accepted');
+  await expect(page.locator('#key-alert')).toBeVisible();
+  expect(modelRequests).toBe(0);
 });

@@ -11,6 +11,7 @@ export class EdenSession {
   private removers: (() => void)[] = [];
   private makeModel: (apiUrl: string) => EdenLiveModel;
   private fetchImpl: typeof fetch;
+  onAuthenticated: () => void = () => {};
   onVideo: (stream: MediaStream) => void = () => {};
   onStage: (stage: Stage) => void = () => {};
   onError: (error: Error) => void = () => {};
@@ -26,6 +27,7 @@ export class EdenSession {
     this.onStage('Connecting to Eden…');
     const jwt = await mintToken({ apiKey: options.apiKey, apiUrl: options.apiUrl, signal: this.abort.signal }, this.fetchImpl);
     alive();
+    this.onAuthenticated();
     const eden = this.makeModel(options.apiUrl);
     this.eden = eden;
     this.removers.push(eden.onMainVideo((_track, stream) => { if (!this.abort.signal.aborted) this.onVideo(stream); }));

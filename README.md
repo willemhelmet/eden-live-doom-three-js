@@ -1,4 +1,4 @@
-# Doom, remixed live
+# Can world models run Doom?
 
 A remixable [Reactor EdenLive](https://docs.reactor.inc/model-api-reference/eden-live/overview) example. Play the original Three.js Doom, bring your own Reactor API key, and transform its frames with a prompt and reference image. The game keeps control of movement, collisions, weapons, enemies, audio and the HUD.
 
@@ -13,7 +13,7 @@ npm ci
 npm run dev
 ```
 
-Open **http://127.0.0.1:3210/**. The original game runs without a key. Paste your Reactor key, choose the environment matching it, edit the prompt/reference/seed, and select **Start Eden**. Cloud usage is charged to your Reactor account. **Stop Eden** disconnects and returns to the original; stop before changing settings. **Copy config** exports the appearance settings without credentials.
+Open **http://127.0.0.1:3210/**. The original game runs without a key. In the red notice above the prompt, paste your Reactor key, choose the matching environment, and select **Use key**. The notice disappears after Reactor accepts it. This checks the key without starting a model session. Edit the prompt/reference/seed, then select **Start Eden**. Cloud usage is charged to your Reactor account. **Stop Eden** disconnects and returns to the original; stop before changing settings. **Copy config** exports the appearance settings without credentials.
 
 The key stays in the page's memory and is sent directly to the selected official Reactor API to obtain a scoped token for one EdenLive session. It is never sent to the demo host, saved in local/session storage, or included in copied configuration. Refresh or **Clear key** removes it. No server key or `.env` credential is needed. Never add a key to `VITE_*` variables or commit one to the repo.
 
