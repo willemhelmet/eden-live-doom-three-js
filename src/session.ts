@@ -1,4 +1,5 @@
 import { EdenLiveModel } from '@reactor-models/eden-live/core';
+import { mintToken } from './auth.mjs';
 
 export type Stage = 'Connecting to Eden…' | 'Preparing appearance…' | 'Waiting for the first generated frame…';
 
@@ -10,6 +11,7 @@ export class EdenSession {
   private removers: (() => void)[] = [];
   private makeModel: (apiUrl: string) => EdenLiveModel;
   private fetchImpl: typeof fetch;
+  onAuthenticated: () => void = () => {};
   onVideo: (stream: MediaStream) => void = () => {};
   onStage: (stage: Stage) => void = () => {};
   onError: (error: Error) => void = () => {};
@@ -20,13 +22,12 @@ export class EdenSession {
     this.fetchImpl = deps.fetchImpl ?? ((input, init) => fetch(input, init));
   }
 
-  async start(options: { apiUrl: string; canvas: HTMLCanvasElement; reference: File; prompt: string }) {
+  async start(options: { apiKey: string; apiUrl: string; canvas: HTMLCanvasElement; reference: File; prompt: string; seed?: number }) {
     const alive = () => this.abort.signal.throwIfAborted();
     this.onStage('Connecting to Eden…');
-    const response = await this.fetchImpl('/api/token', { method: 'POST', headers: { 'X-Eden-Client': 'deck' }, signal: this.abort.signal });
-    const token = await response.json();
-    if (!response.ok) throw new Error(token.error || 'Could not get a session token.');
+    const jwt = await mintToken({ apiKey: options.apiKey, apiUrl: options.apiUrl, signal: this.abort.signal }, this.fetchImpl);
     alive();
+    this.onAuthenticated();
     const eden = this.makeModel(options.apiUrl);
     this.eden = eden;
     this.removers.push(eden.onMainVideo((_track, stream) => { if (!this.abort.signal.aborted) this.onVideo(stream); }));
@@ -34,7 +35,7 @@ export class EdenSession {
     const onError = (error: Error) => { if (!this.abort.signal.aborted) this.onError(error); };
     eden.on('error', onError);
     this.removers.push(() => eden.off('error', onError));
-    await eden.connect(token.jwt);
+    await eden.connect(jwt);
     alive();
     await waitReady(eden, this.abort.signal);
     alive();
@@ -54,7 +55,7 @@ export class EdenSession {
     alive();
     required(await eden.setPrompt({ prompt: options.prompt }), 'set_prompt');
     alive();
-    required(await eden.start({ seed: 2026092901 }), 'start');
+    required(await eden.start({ seed: options.seed ?? 2026092901 }), 'start');
     alive();
     this.onStage('Waiting for the first generated frame…');
   }

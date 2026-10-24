@@ -21,7 +21,7 @@ function fixture(overrides = {}) {
   };
   const session = new EdenSession({ makeModel: () => model, fetchImpl: async () => Response.json({ jwt: 'scoped-test-token' }) });
   const options = {
-    apiUrl: 'https://api.reactor.inc', prompt: 'Orbital greenhouse', reference: new File(['image'], 'test.png'),
+    apiKey: 'visitor-test-key', apiUrl: 'https://api.reactor.inc', prompt: 'Orbital greenhouse', reference: new File(['image'], 'test.png'),
     canvas: { captureStream: (fps) => { assert.equal(fps, 24); return { getVideoTracks: () => [{ stop: () => { stopped = true; } }] }; } },
   };
   return { session, options, calls, listeners, isStopped: () => stopped };
@@ -29,6 +29,7 @@ function fixture(overrides = {}) {
 
 test('session stages appearance only after transport readiness, then releases capture on stop', async () => {
   const f = fixture();
+  f.session.onAuthenticated = () => { assert.deepEqual(f.calls, []); };
   await f.session.start(f.options);
   assert.deepEqual(f.calls, ['connect', 'publish', 'setSource', 'setPaused', 'upload', 'setImage', 'setPrompt', 'start']);
   await f.session.stop(); await f.session.stop();

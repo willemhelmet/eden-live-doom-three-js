@@ -1,106 +1,78 @@
-# DOOM × EdenLive
+# Can world models run Doom?
 
-Play Doom on a Steam Deck while [Reactor EdenLive](https://docs.reactor.inc/model-api-reference/eden-live/overview) transforms the world in real time. Doom runs locally in Three.js. Eden inference runs in the cloud. Movement, collisions, enemies, weapons, sound, menus and the HUD remain owned by the original game.
+A remixable [Reactor EdenLive](https://docs.reactor.inc/model-api-reference/eden-live/overview) example. Play the original Three.js Doom, bring your own Reactor API key, and transform its frames with a prompt and reference image. The game keeps control of movement, collisions, weapons, enemies, audio and the HUD.
 
-The intended demo is an over-the-shoulder shot of a real person playing on a real Deck, with a button press switching between the original and the generated world. No prerecorded output or simulated AI mode is included.
+## Try it locally
 
-![Original Doom on the left, live EdenLive greenhouse output on the right](docs/preview.png)
-
-Actual cloud smoke-test screenshot from Chromium on a development computer. This is not a Steam Deck hardware result.
-
-## Run on your computer
-
-Requires Node.js 22.14+ and npm. The source is pinned and included, so there is no separate Doom install or CDN dependency.
+Requires Node.js 22.14+ and npm.
 
 ```sh
 git clone https://github.com/willemhelmet/eden-live-doom-three-js.git
 cd eden-live-doom-three-js
-cp .env.example .env
-# Edit .env and add REACTOR_API_KEY. Use the endpoint matching your key.
+npm ci
+npm run dev
+```
+
+Open **http://127.0.0.1:3210/**. The Doom preview stays dimmed and inactive until a key is validated. In the red notice above the canvas, paste your Reactor production key and select **Use key**. The notice disappears and the centered Start button unlocks after Reactor accepts it. This checks the key without starting a model session. Edit the prompt/reference/seed, then select **Start Eden** in the canvas. Cloud usage is charged to your Reactor account. **Stop Eden** below the canvas disconnects and returns to the preview; stop before changing settings. **Copy config** exports the appearance settings without credentials.
+
+The key stays in the page's memory and is sent directly to the official Reactor production API to obtain a scoped token for one EdenLive session. It is never sent to the demo host, saved in local/session storage, or included in copied configuration. Refresh or **Clear key** removes it. No server key or `.env` credential is needed. Never add a key to `VITE_*` variables or commit one to the repo.
+
+## Deploy a public BYOK demo
+
+### GitHub Pages
+
+The included [Pages workflow](.github/workflows/pages.yml) builds the app, runs the Node tests and browser suite under the repository URL path, and publishes `dist/` on pushes to `main`. In a fork, enable **Settings → Pages → Source → GitHub Actions**. No API key or repository secret is required.
+
+This repository's Pages URL is [willemhelmet.github.io/eden-live-doom-three-js](https://willemhelmet.github.io/eden-live-doom-three-js/). The build uses relative asset URLs so it also works at a domain root or a different repository path.
+
+### Other static hosts
+
+```sh
 npm ci
 npm run build
-npm start
 ```
 
-Open **http://127.0.0.1:3210/**, using that exact host. Original Doom is available without a key. **Start Eden** creates one cloud session; **Stop Eden** disconnects it and restores the original. **Restart level** disconnects first and reloads E1M1. Hiding the page requests a disconnect, and closing it drops its connection; use Stop Eden for confirmed cleanup before ending a take. The platform token additionally caps the session at 15 minutes. Cloud usage is billed to your Reactor account.
+Publish **`dist/`** to an HTTPS static host. On Vercel, import this repo with framework **Other**, build command **`npm run build`**, and output directory **`dist`**. The included `vercel.json` supplies those settings if you prefer Vercel. No functions or environment secrets are required. The build copies the game, WAD, Three.js modules, reference image, fonts and brand assets into the output; it does not depend on the Node preview server. Preserve `/doom/index.html` directory routing and serve `.mjs` as JavaScript. Avoid a blanket SPA fallback that hides missing assets.
 
-For development: `npm run dev`. The same Node server serves Vite and the token endpoint. There is no public token broker, queue or deployment to configure.
+For a local production preview, use `npm run build && npm start`. Optional `.env` configuration only sets `PORT` (default 3210). HTTPS or localhost is required for browser capture and clipboard features. Initial model connection needs cloud capacity and internet access.
 
-## Steam Deck: Desktop Mode first
+## Make it yours
 
-1. Switch the Deck to Desktop Mode. Install **Chromium** from Discover if you do not already have Chromium or Chrome.
-2. Clone this repository in Konsole into a directory you control, such as `~/Games/eden-live-doom-three-js`.
-3. Run:
+| File | What to change |
+| --- | --- |
+| [`index.html`](index.html) | Default prompt, seed, controls and page copy |
+| [`public/appearance-greenhouse.png`](public/appearance-greenhouse.png) | Bundled appearance reference ([generation prompt](docs/appearance-reference-prompt.md)) |
+| [`src/session.ts`](src/session.ts) | Connection lifecycle, reference upload, source publication and acknowledged commands |
+| [`src/auth.mjs`](src/auth.mjs) | Direct browser token request and permitted Reactor endpoints |
+| [`src/doom-bridge.mjs`](src/doom-bridge.mjs) | Scene capture and local overlay; adapt this for a different game/canvas |
+| [`src/main.ts`](src/main.ts) | Form controls, video reveal, comparison and cleanup |
+| [`src/style.css`](src/style.css) | Reactor-branded developer workbench |
 
-   ```sh
-   cd ~/Games/eden-live-doom-three-js
-   bash scripts/deck.sh
-   ```
+To use another scene, replace the Doom iframe/bridge with a canvas source and pass it to `EdenSession.start` with an API key, endpoint, reference, prompt and seed. The session publishes that canvas at a target 24 fps. Copy config is a starting point for those settings, not an exported image or API credential.
 
-4. On first run the launcher creates `.env`. Edit that file with your Reactor API key, then close the launcher and run it again. Use `REACTOR_API_URL=https://api.rea.live` only if you are using a dev key; otherwise keep the default production endpoint.
-5. The launcher installs a portable Node 24 LTS runtime inside `.runtime/` if needed, verifies its SHA-256 against Node's official manifest, installs the locked npm packages and builds the app. It never needs `sudo`, writable SteamOS system partitions or a global Node install. Initial setup requires internet. Eden also requires internet while playing.
-6. Chromium opens in its own kiosk profile. Use the small **•••** button in the top right to reveal setup/connection controls, or R3 to leave theater mode. Exit the browser with Alt+F4 or Steam's shortcut close control. Closing the browser also stops the local server. Logs are in `.runtime/server.log`.
+The original scene remains the input in every view; generated output never feeds back into the model. The app pauses local play during startup, waits for transport readiness, selects the client source, stages the appearance, and starts generation. It reveals generated video only after a completed model chunk and a decoded nonblack frame. Doom's gun and HUD are composited locally above the generated world; menus and automap show the original.
 
-Keep this repo in a path the browser can access. The Flatpak launch grants device and `/run/udev` access for the controller for that invocation. For manual browser launch, run `bash scripts/deck.sh --no-browser` and keep the terminal open.
-
-### Add to Steam Gaming Mode
-
-In Desktop Steam, choose **Games → Add a Non-Steam Game → Browse** and add `/usr/bin/bash`. Set the shortcut name to **Reactor / Doom** and its properties to:
-
-```text
-Target:         /usr/bin/bash
-Start In:       /home/deck/Games/eden-live-doom-three-js
-Launch Options: "/home/deck/Games/eden-live-doom-three-js/scripts/deck.sh"
-```
-
-Adjust both paths to your actual checkout. Leave compatibility/Proton disabled: this is a native Linux launcher. Select a **Gamepad With Joystick Trackpad** Steam Input template. The app reads the standard browser Gamepad API; a keyboard-and-mouse template will not exercise the analog adapter. Return to Gaming Mode and launch the shortcut. If inputs do not appear, check Chromium's gamepad access and try Desktop Mode to separate browser permissions from Steam Input configuration.
-
-Physical Deck hardware, Gaming Mode and the Flatpak path still require a check on the target device. Browser automation on another machine cannot establish those results.
+Stop explicitly before leaving for confirmed cleanup. Hiding the page requests a disconnect, closing it drops the connection, and scoped tokens cap a session at 15 minutes. Generated visuals arrive behind local input and can drift over time; long-session alignment and end-to-end latency are not established by this example.
 
 ## Controls
 
-| Action | Steam Deck / standard gamepad | Desktop |
-| --- | --- | --- |
-| Move / strafe | Left stick | WASD |
-| Turn | Right stick horizontal | Mouse, left/right arrows |
-| Fire | RT | Left mouse / Ctrl |
-| Use / open door | A | Space |
-| Run | LT or L3 | Shift |
-| Previous / next owned weapon | LB / RB | Number keys |
-| Start / stop Eden | X | On-screen button |
-| Original ↔ Eden | Y | View button |
-| Cycle original / Eden / split | View | V |
-| Doom menu / pause | Menu or B | Escape |
-| Menu selection | D-pad + A | Arrows + Enter |
-| Fullscreen / return to controls | R3 | F |
+Click the game to play. WASD moves, mouse or arrows turn, Ctrl/left click fires, Space uses a door, Shift runs, Esc opens the menu, V cycles original/Eden/split, and F toggles fullscreen. The view button becomes available after generated video arrives. **Restart level** disconnects and reloads E1M1.
 
-Doom's original view has no vertical look. The adapter uses a slow filming pace: walking, strafing and camera turning run at roughly one quarter of their original speed for keyboard, mouse and gamepad. Run still gives a relative boost. The game continues at its original 35 Hz simulation rate. Pace multipliers are in `src/deck-input.mjs`. Stick drift has a deadzone. Keyboard and gamepad input compose; disconnecting the controller returns its axes and buttons to neutral.
+Walking, strafing and turning use one quarter of the original speed, for keyboard, mouse and gamepad. Tune `DEMO_PACE` in [`src/deck-input.mjs`](src/deck-input.mjs). Simulation still runs at 35 Hz. A standard gamepad supports left-stick movement, right-stick turn, RT fire, A use, LT/L3 run, bumpers for weapons, X connection, Y view toggle, View comparison and R3 fullscreen.
 
-## Appearance and first frame
-
-Open **Setup** to edit the prompt and reference image. The default is a bundled **orbital greenhouse** appearance image, generated from the exact world-only E1M1 opening composition using the built-in image-generation tool. It changes the materials, lighting and vegetation while retaining the room's geometry. Its [prompt](docs/appearance-reference-prompt.md) is included. Choose **Current Doom frame** to use a live snapshot, or upload your own image. Changes apply to the next cloud connection; the running app makes no image-generation API calls.
-
-The app suspends local play during connection and staging, publishes the local world at a target 24 fps, selects `source=client`, pauses the model, uploads/stages the reference, sets the prompt, then starts. It reveals `main_video` only after the model reports a completed chunk and the browser decodes a nonblack frame, then resumes local play. The original weapon and HUD are composited above the generated world. Menus and automap show the original game so they stay usable. Restart the level before a new take to align with the bundled opening reference.
-
-Y / V changes what you see; it does not change the capture source. The generated output never feeds back into Eden. Keep turns slow for the filmed take: local controls remain responsive, but generated visuals arrive later and may drift over time. There is no claim of measured end-to-end latency or long-session stability.
-
-## Film the demo
-
-See [the short shot list and caption draft](docs/filming.md). No social account is connected and nothing is posted by this project.
+The optional `bash scripts/deck.sh` launcher still supports Steam Deck Desktop Mode and installs its runtime inside the checkout. Enter the key in the browser. SteamOS, Gaming Mode and physical controller behavior require verification on the device; they are not the primary setup path.
 
 ## Validation
 
 ```sh
-npm test
 npm run build
-npx playwright install chromium       # Once, only for browser tests
+npm test
+npx playwright install chromium   # Once for browser tests
 npm run test:browser
 ```
 
-Unit tests cover analog input, credential isolation, token scope, cancellation and cleanup. Browser tests boot the real bundled Doom at 1280×800, inspect actual rendered pixels, move the real player with keyboard and an emulated standard gamepad, verify release, and exercise no-key failure/restart. They do not call the cloud. An existing Chromium binary can be selected through `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
-
-See [VALIDATION.md](VALIDATION.md) for the actual run results and outstanding device checks.
+Tests cover source rendering, actual player movement, slower inputs, controller release, direct BYOK requests, sanitized errors, credential persistence, copied configuration, static assets, cancellation and session cleanup. They use fake credentials and do not incur cloud usage. See [VALIDATION.md](VALIDATION.md) for results and the separate earlier live-cloud smoke test.
 
 ## Source and licensing
 
-The pinned [mrdoob/three-doom](https://github.com/mrdoob/three-doom) port is included under its stated GPL v2 code license; this demo's source is GPL-2.0-only. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for source provenance, the small adapter patches and asset boundaries. The included `doom1.wad` is the upstream shareware Episode 1 asset, separate from the code license. No registered Doom assets are included. Reactor's hosted service and npm SDK dependencies have their own terms/licenses.
+The pinned [mrdoob/three-doom](https://github.com/mrdoob/three-doom) port is included under its stated GPL v2 code license; this example's source is GPL-2.0-only. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for provenance, adapter patches and asset boundaries. `doom1.wad` is upstream's shareware Episode 1 asset, separate from the code license. No registered Doom assets are included. Reactor branding, supplied fonts, hosted service and SDK dependencies retain their own terms and licenses.

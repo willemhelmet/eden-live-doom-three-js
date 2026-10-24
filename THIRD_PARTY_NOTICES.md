@@ -19,6 +19,12 @@ The iframe host, canvas capture and controller adapter are supplied in this repo
 
 `vendor/three-doom/doom1.wad` and `M_CONT.png` are included exactly as in upstream. The WAD is Doom shareware Episode 1, not GPL-covered game data. Its original asset terms remain applicable; the GPL code license does not relicense these assets. No registered/full-game WADs are included.
 
+## Reactor brand artwork
+
+The supplied Reactor core logo lockup, Dune Chip symbol, usage notes and color tokens are copied unchanged from the user's Reactor brand asset pack. The runtime uses `public/brand/symbol-wordmark-white.png`, `public/brand/symbol-dune.svg` and `src/brand-colors.css`. Reactor brand artwork remains subject to its owner's trademark and asset rights; the project's code license does not relicense these marks.
+
+Aeonik Regular, Medium and Bold web fonts and IBM Plex Mono Regular are copied unchanged from the user's Reactor digital handover assets and served locally from `public/brand/fonts/`. Their respective font licenses remain applicable; the code license does not relicense the font files. Typography, palette hierarchy and spacing loosely follow the supplied Reactor Figma guidelines.
+
 ## Generated appearance asset
 
 `public/appearance-greenhouse.png` was generated for this demo with the built-in image-generation tool on October 24, 2026, using a captured world-only E1M1 frame as the composition/edit target. It is an appearance reference, not a prerecorded gameplay video. The prompt is included in `docs/appearance-reference-prompt.md`.

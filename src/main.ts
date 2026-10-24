@@ -1,17 +1,21 @@
 import './style.css';
 import { EdenSession } from './session';
+import { REACTOR_ENDPOINTS, ReactorAuthError, mintToken } from './auth.mjs';
 
 type Layout = { canvasWidth: number; canvasHeight: number; viewX: number; viewY: number; viewWidth: number; viewHeight: number };
 type Frame = { source: HTMLCanvasElement; overlay: HTMLCanvasElement; view: Layout; menu: boolean; now: number };
 type Bridge = { ready: boolean; source: HTMLCanvasElement; frames: number; onFrame: (fn: (frame: Frame) => void) => void; setEnabled: (enabled: boolean) => void; suspend: (value: boolean) => void; focus: () => void };
 type DoomWindow = Window & { doomBridge?: Bridge };
 type View = 'raw' | 'eden' | 'compare';
+const assetUrl = (path: string) => new URL(path, document.baseURI).href;
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const iframe = element<HTMLIFrameElement>('doom');
 const stage = element('stage');
 const output = element<HTMLVideoElement>('output');
 const hud = element<HTMLCanvasElement>('hud');
 const connect = element<HTMLButtonElement>('connect');
+const stopButton = element<HTMLButtonElement>('stop');
+const startScreen = element('start-screen');
 const viewButton = element<HTMLButtonElement>('view');
 const status = element('status');
 const errorBox = element('error');
@@ -19,6 +23,57 @@ const waiting = element('waiting');
 const prompt = element<HTMLTextAreaElement>('prompt');
 const reference = element<HTMLInputElement>('reference');
 const referenceMode = element<HTMLSelectElement>('reference-mode');
+const apiKey = element<HTMLInputElement>('api-key');
+const seed = element<HTMLInputElement>('seed');
+const keyAlert = element('key-alert');
+const keyMessage = element('key-message');
+const validateButton = element<HTMLButtonElement>('validate-key');
+let keyValidation: AbortController | null = null;
+let keyAccepted = false;
+
+function setKeyAccepted(accepted: boolean, message = 'Add your Reactor API key to connect.') {
+  keyAccepted = accepted;
+  keyAlert.hidden = accepted;
+  element('key-summary').hidden = !accepted;
+  keyMessage.textContent = message;
+  if (accepted) maskKey();
+  syncGameAccess();
+}
+function invalidateKey() {
+  keyValidation?.abort(); keyValidation = null;
+  validateButton.disabled = false; validateButton.textContent = 'Use key';
+  setKeyAccepted(false);
+}
+function maskKey() {
+  apiKey.type = 'password';
+  element('show-key').textContent = 'Show';
+  element('show-key').setAttribute('aria-pressed', 'false');
+  element('show-key').setAttribute('aria-label', 'Show API key');
+}
+async function validateKey() {
+  if (session || closing || keyValidation) return;
+  if (!apiKey.value.trim()) { setKeyAccepted(false); apiKey.focus(); return; }
+  const controller = new AbortController();
+  keyValidation = controller;
+  const timeout = window.setTimeout(() => controller.abort(), 20_000);
+  validateButton.disabled = true; validateButton.textContent = 'Checking…';
+  keyMessage.textContent = 'Checking your Reactor key…';
+  try {
+    await mintToken({ apiKey: apiKey.value.trim(), apiUrl: REACTOR_ENDPOINTS.production, signal: controller.signal });
+    if (keyValidation !== controller) return;
+    setKeyAccepted(true);
+    status.textContent = 'Ready to connect.';
+  } catch (error) {
+    if (keyValidation !== controller) return;
+    setKeyAccepted(false, controller.signal.aborted ? 'Reactor did not respond. Check your connection and try again.' : error instanceof Error ? error.message : 'Could not check this key. Try again.');
+    apiKey.focus({ preventScroll: true });
+  } finally {
+    clearTimeout(timeout);
+    if (keyValidation === controller) { keyValidation = null; validateButton.disabled = false; validateButton.textContent = 'Use key'; syncGameAccess(); }
+  }
+}
+const referencePreview = document.querySelector<HTMLImageElement>('.reference-preview img')!;
+let referenceObjectUrl: string | null = null;
 let bridge: Bridge | undefined;
 let session: EdenSession | null = null;
 let closing = false;
@@ -31,17 +86,41 @@ let toastTimeout = 0;
 let currentMenu = false;
 let generatedAt = 0;
 let generatedChunks = 0;
-let config: { apiUrl: string; configured: boolean };
 
 function setView(next: View) {
   view = live ? next : 'raw';
   stage.dataset.view = view;
-  viewButton.innerHTML = `${view === 'raw' ? 'Original' : view === 'eden' ? 'Eden' : 'Split view'} <kbd>Y</kbd>`;
+  viewButton.innerHTML = `${view === 'raw' ? 'Original' : view === 'eden' ? 'Eden' : 'Split view'} <kbd>V</kbd>`;
   element('view-label').textContent = view === 'raw' ? 'ORIGINAL / THREE.JS' : view === 'eden' ? 'EDEN / REACTOR' : 'ORIGINAL ← / → EDEN';
 }
 function cycle() { setView(view === 'raw' ? 'eden' : view === 'eden' ? 'compare' : 'raw'); focusGame(); }
-function focusGame() { if (element('setup').hidden && waiting.hidden) bridge?.focus(); }
+function isEditing(target: Element | null) { return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement; }
+function focusGame() { if (keyAccepted && waiting.hidden && !isEditing(document.activeElement)) bridge?.focus(); }
+function syncGameAccess() {
+  stage.dataset.locked = String(!keyAccepted);
+  iframe.inert = !keyAccepted;
+  iframe.tabIndex = keyAccepted ? 0 : -1;
+  startScreen.hidden = !!session;
+  element('start-hint').hidden = keyAccepted;
+  element('forget-key').hidden = !apiKey.value.trim();
+  connect.disabled = !keyAccepted || !bridge?.ready || closing || !!keyValidation;
+  connect.textContent = closing ? 'Disconnecting…' : 'Start Eden';
+  stopButton.hidden = !live;
+  bridge?.setEnabled(keyAccepted && waiting.hidden && !isEditing(document.activeElement));
+  bridge?.suspend(!keyAccepted || !waiting.hidden);
+}
+function lockSettings(locked: boolean) {
+  element<HTMLFieldSetElement>('world-settings').disabled = locked;
+  apiKey.readOnly = locked;
+  validateButton.disabled = locked || !!keyValidation;
+}
 function showError(error: unknown) {
+  if (error instanceof ReactorAuthError) {
+    setKeyAccepted(false, error.message);
+    apiKey.focus({ preventScroll: true });
+    keyAlert.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return;
+  }
   errorBox.textContent = error instanceof Error ? error.message : String(error);
   errorBox.hidden = false;
 }
@@ -54,9 +133,8 @@ function toast(message: string) {
 function bindGame() {
   bridge = (iframe.contentWindow as DoomWindow | null)?.doomBridge;
   if (!bridge?.ready) return;
-  connect.disabled = closing;
-  connect.textContent = 'Start Eden';
-  status.textContent = config?.configured ? 'Ready. Play the original or start Eden.' : 'Original ready · add your API key in .env for Eden';
+  syncGameAccess();
+  status.textContent = keyAccepted ? 'Ready to connect.' : 'Original ready. Add your key to transform it.';
   bridge.onFrame((frame) => {
     currentMenu = frame.menu;
     // Place only the generated WORLD in the original viewport. Doom's HUD,
@@ -83,20 +161,24 @@ function bindGame() {
 }
 
 async function start() {
-  if (session || closing || !bridge?.ready) return;
-  if (!prompt.value.trim()) { showError(new Error('Enter an appearance prompt in Setup.')); return; }
+  if (session || closing || keyValidation || !bridge?.ready) return;
+  if (!keyAccepted || !apiKey.value.trim()) { setKeyAccepted(false); apiKey.focus(); return; }
+  if (!prompt.value.trim()) { showError(new Error('Enter an appearance prompt.')); prompt.focus(); return; }
+  const chosenSeed = Number(seed.value);
+  if (!seed.value || !Number.isInteger(chosenSeed) || chosenSeed < 0 || chosenSeed > 2147483647) { showError(new Error('Choose a seed between 0 and 2147483647.')); seed.focus(); return; }
   errorBox.hidden = true;
+  apiKey.blur();
   const active = new EdenSession();
   session = active;
   live = false;
   generatedChunks = 0;
   let generationStarted = false;
-  connect.textContent = 'Stop Eden';
   waiting.hidden = false;
-  element('setup').hidden = true;
-  element('settings').setAttribute('aria-expanded', 'false');
+  syncGameAccess();
+  lockSettings(true);
   bridge.setEnabled(false);
   bridge.suspend(true);
+  active.onAuthenticated = () => { if (session === active) setKeyAccepted(true); };
   active.onStage = (text) => { if (session === active && !live) element('waiting-text').textContent = text; };
   active.onError = (error) => { if (session === active) { showError(error); void stop(); } };
   active.onChunk = (chunks) => { if (session === active) generatedChunks = chunks; };
@@ -117,11 +199,10 @@ async function start() {
       generatedAt = performance.now();
       clearTimeout(frameTimeout);
       waiting.hidden = true;
-      bridge?.setEnabled(true);
-      bridge?.suspend(false);
+      syncGameAccess();
       viewButton.disabled = false;
       setView('eden');
-      status.textContent = 'Live · Y / V compare · Stop Eden to disconnect';
+      status.textContent = 'Live on your key. Stop Eden to disconnect.';
       focusGame();
     };
     revealCallback = output.requestVideoFrameCallback(reveal);
@@ -134,7 +215,7 @@ async function start() {
       bridge!.source.toBlob((blob) => blob ? resolve(new File([blob], 'doom-opening.png', { type: 'image/png' })) : reject(new Error('Could not capture the opening frame.')), 'image/png');
     }));
     if (session !== active) return;
-    await active.start({ apiUrl: config.apiUrl, canvas: bridge.source, reference: image, prompt: prompt.value.trim() });
+    await active.start({ apiKey: apiKey.value.trim(), apiUrl: REACTOR_ENDPOINTS.production, canvas: bridge.source, reference: image, prompt: prompt.value.trim(), seed: chosenSeed });
     generationStarted = true;
   } catch (error) {
     if (session !== active) return;
@@ -154,50 +235,62 @@ async function stop() {
   revealCallback = 0;
   output.pause(); output.srcObject = null;
   waiting.hidden = true;
-  bridge?.setEnabled(true);
-  bridge?.suspend(false);
+  syncGameAccess();
   viewButton.disabled = true;
   setView('raw');
-  connect.disabled = closing;
-  connect.textContent = closing ? 'Disconnecting…' : 'Start Eden';
   status.textContent = closing ? 'Closing the cloud session…' : 'Original Doom';
   focusGame();
   try { await old?.stop(); }
-  catch { showError(new Error('Cloud disconnect could not be confirmed. Check your Reactor sessions before starting another take.')); }
+  catch { showError(new Error('Cloud disconnect could not be confirmed. Check your Reactor sessions before reconnecting.')); }
   finally {
     closing = false;
-    connect.disabled = !bridge?.ready;
-    connect.textContent = 'Start Eden';
-    status.textContent = 'Original Doom · Eden disconnected';
+    lockSettings(false);
+    syncGameAccess();
+    status.textContent = 'Disconnected. Change the world and reconnect.';
   }
 }
 
 async function fullscreen() {
   document.body.classList.toggle('theater');
   if (document.body.classList.contains('theater')) {
-    try { await document.documentElement.requestFullscreen(); } catch { /* Steam / kiosk may already own fullscreen. */ }
+    try { await document.documentElement.requestFullscreen(); } catch { /* CSS theater mode remains available. */ }
   } else if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
   focusGame();
 }
 
-connect.onclick = () => { if (session) void stop(); else void start(); };
+connect.onclick = () => void start();
+stopButton.onclick = () => void stop();
 element('cancel').onclick = () => void stop();
 viewButton.onclick = cycle;
 element('fullscreen').onclick = () => void fullscreen();
 element('exit-theater').onclick = () => void fullscreen();
-element('settings').onclick = () => {
-  const setup = element('setup'); setup.hidden = !setup.hidden;
-  element('settings').setAttribute('aria-expanded', String(!setup.hidden));
-  bridge?.setEnabled(setup.hidden);
-  if (setup.hidden) focusGame();
+element('show-key').onclick = () => {
+  const reveal = apiKey.type === 'password'; apiKey.type = reveal ? 'text' : 'password';
+  element('show-key').textContent = reveal ? 'Hide' : 'Show';
+  element('show-key').setAttribute('aria-pressed', String(reveal));
+  element('show-key').setAttribute('aria-label', reveal ? 'Hide API key' : 'Show API key');
 };
+element('forget-key').onclick = () => { invalidateKey(); apiKey.value = ''; maskKey(); void stop(); };
+validateButton.onclick = () => void validateKey();
+apiKey.addEventListener('input', invalidateKey);
+apiKey.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); void validateKey(); } });
+element('copy-config').onclick = () => void copyText(JSON.stringify({ model: 'reactor/eden-live', source: 'client', prompt: prompt.value.trim(), seed: Number(seed.value), reference: reference.files?.[0]?.name ?? (referenceMode.value === 'greenhouse' ? 'appearance-greenhouse.png' : 'current-frame'), inputFps: 24 }, null, 2));
+element('copy-quickstart').onclick = () => void copyText(element('quickstart-code').textContent ?? '');
+document.addEventListener('focusin', syncGameAccess);
+document.addEventListener('focusout', () => queueMicrotask(syncGameAccess));
 element('reset').onclick = async () => {
   if (closing) return;
   await stop();
-  bridge = undefined; connect.disabled = true; connect.textContent = 'Loading Doom…';
-  iframe.src = `/doom/?-iwad=doom1.wad&-warp=1%201&-skill=2&-nomusic&take=${Date.now()}`;
+  bridge = undefined; syncGameAccess();
+  iframe.src = assetUrl(`doom/?-iwad=doom1.wad&-warp=1%201&-skill=2&-nomusic&take=${Date.now()}`);
 };
-reference.onchange = () => { element('reference-name').textContent = reference.files?.[0]?.name ?? (referenceMode.value === 'greenhouse' ? 'Built-in orbital greenhouse' : 'Current Doom frame'); };
+reference.onchange = () => {
+  if (referenceObjectUrl) URL.revokeObjectURL(referenceObjectUrl);
+  referenceObjectUrl = reference.files?.[0] ? URL.createObjectURL(reference.files[0]) : null;
+  if (referenceObjectUrl) referencePreview.src = referenceObjectUrl;
+  else if (referenceMode.value === 'greenhouse') referencePreview.src = assetUrl('appearance-greenhouse.png');
+  else if (bridge?.ready) referencePreview.src = bridge.source.toDataURL('image/png');
+};
 referenceMode.onchange = () => { reference.value = ''; reference.onchange?.(new Event('change')); };
 element('clear-reference').onclick = () => { reference.value = ''; referenceMode.value = 'greenhouse'; reference.onchange?.(new Event('change')); };
 
@@ -215,17 +308,17 @@ window.addEventListener('message', (event) => {
   }
 });
 window.addEventListener('keydown', (event) => {
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.repeat) return;
+  if (isEditing(event.target instanceof Element ? event.target : null) || event.repeat) return;
   if (event.code === 'KeyF') { event.preventDefault(); void fullscreen(); }
   if (event.code === 'KeyV') { event.preventDefault(); cycle(); }
 });
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) document.body.classList.remove('theater'); });
-window.addEventListener('pagehide', () => { void session?.stop(); });
+window.addEventListener('pagehide', () => { keyValidation?.abort(); void session?.stop(); });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && session) { toast('Cloud session stopped while the page was hidden.'); void stop(); }
 });
 
-// Expose no credentials; this is useful when checking a Deck's frame delivery.
+// Diagnostics contain no credential or token values.
 Object.defineProperty(window, 'edenDemo', { get: () => ({ live, view, closing, chunks: generatedChunks, menu: currentMenu, seconds: live ? (performance.now() - generatedAt) / 1000 : 0, capturedFrames: bridge?.frames ?? 0 }) });
 
 const probe = document.createElement('canvas');
@@ -241,16 +334,17 @@ function hasPicture(video: HTMLVideoElement) {
 }
 
 async function builtInReference() {
-  const response = await fetch('/appearance-greenhouse.png');
-  if (!response.ok) throw new Error('The bundled appearance reference is missing. Rebuild the app or choose Current Doom frame in Setup.');
+  const response = await fetch(assetUrl('appearance-greenhouse.png'));
+  if (!response.ok) throw new Error('The bundled appearance reference is missing. Rebuild the app or choose Current Doom frame in the reference selector.');
   return new File([await response.blob()], 'orbital-greenhouse.png', { type: 'image/png' });
 }
 
+async function copyText(text: string) {
+  try { await navigator.clipboard.writeText(text); toast('Copied. No API key is included.'); }
+  catch { showError(new Error('Clipboard access was blocked. You can select and copy the example from the page.')); }
+}
+
 setView('raw');
-try {
-  const response = await fetch('/api/config');
-  config = await response.json();
-  if (!response.ok) throw new Error('Could not load local configuration.');
-  bindGame();
-} catch (error) { showError(error); }
+syncGameAccess();
+bindGame();
 if (new URLSearchParams(location.search).has('theater')) document.body.classList.add('theater');
