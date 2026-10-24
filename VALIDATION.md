@@ -1,14 +1,17 @@
 # Validation — October 24, 2026
 
-## Verified locally
+## Public BYOK version
 
-- Production TypeScript check and Vite build pass with the locked dependencies. Vite reports the SDK's browser-only `use client` directive and large embedded-WASM chunk as warnings; these do not prevent the build or the live test.
-- Node tests exercise analog movement bounds, deadzone, controller release, single-session token scope, missing-key behavior, Host/Origin checks, credential isolation, command refusal, cancellation while connecting, capture cleanup and completed-chunk gating.
-- Final run: all 12 Node tests and all 4 browser tests passed.
-- Chromium browser tests run at 1280×800 with the actual vendored game. The opening world has visible rendered pixels; keyboard and emulated standard-gamepad input change the actual player position and angle. Turning ceases after unplug. Missing-key startup returns to the original game and Restart level reloads it.
-- `bash -n scripts/deck.sh` passes. The Deck-specific runtime download, browser selection and Steam shortcut are documented but not hardware-tested.
+- Production TypeScript, Vite and static packaging build pass. `dist/` contains the game source, WAD, bridge, Three.js modules, reference and Reactor brand assets.
+- All **13 Node tests** and **6 Chromium browser tests** pass.
+- Browser tests boot the actual game, inspect rendered source pixels, move the player with keyboard and emulated standard-gamepad input, verify slower movement and release, and restart the level.
+- Browser BYOK tests intercept the official Reactor token URL using a fake key. They verify direct key headers, single-session scope, sanitized provider errors, cleanup, no local token broker, no browser storage of the key, and an empty key field after reload. Copied settings exclude the key; Clear resets the reveal control.
+- Static server tests verify game/brand dependency routes, hidden-file blocking, and the absence of a server-key fallback even with a server environment credential present.
+- API CORS preflight accepts a cross-origin browser token request with the Reactor API key header. The browser tests mock token rejection; a new paid cloud session has not been run through the BYOK UI.
+- Vite reports the SDK's browser-only `use client` directive and embedded-WASM chunk size as nonfatal warnings.
+- `bash -n scripts/deck.sh` passes. Physical Steam Deck behavior remains unverified.
 
-## Live cloud smoke test
+## Earlier live cloud smoke test (before BYOK)
 
 ### Slower camera and walking adjustment
 

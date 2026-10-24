@@ -6,7 +6,7 @@ async function boot(page) {
   return page.frames().find((frame) => frame.url().includes('/doom/'));
 }
 
-test('Doom boots offline with a nonblank source at Deck resolution', async ({ page }) => {
+test('Doom boots without a key with a nonblank source', async ({ page }) => {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   const frame = await boot(page);
@@ -62,7 +62,7 @@ test('keyboard and analog gamepad move the real Doom player; unplug releases mov
 test('cloud failures return to the playable original, and restart boots a fresh level', async ({ page }) => {
   await boot(page);
   await page.getByRole('button', { name: 'Start Eden', exact: true }).click();
-  await expect(page.locator('#error')).toContainText('REACTOR_API_KEY');
+  await expect(page.locator('#error')).toContainText('Add your Reactor API key');
   await expect(page.locator('#waiting')).toBeHidden();
   await expect(page.getByRole('button', { name: 'Start Eden', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Restart level', exact: true }).click();
@@ -75,5 +75,47 @@ test('theater mode has a touch-accessible way back to setup', async ({ page }) =
   const control = page.getByRole('button', { name: 'Show demo controls' });
   await expect(control).toBeVisible();
   await control.click();
-  await expect(page.getByRole('button', { name: 'Setup', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Your Reactor API key')).toBeVisible();
+});
+
+
+test('BYOK requests go directly to Reactor and failures never echo keys', async ({ page }) => {
+  const key = 'browser-test-key-not-a-real-credential';
+  let tokenRequest;
+  let brokerRequests = 0;
+  page.on('request', request => { if (request.url().includes('/api/token')) brokerRequests++; });
+  await page.route('https://api.reactor.inc/tokens', async route => {
+    tokenRequest = route.request();
+    await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: key }) });
+  });
+  await boot(page);
+  await page.getByLabel('Your Reactor API key').fill(key);
+  await page.getByRole('button', { name: 'Start Eden', exact: true }).click();
+  await expect(page.locator('#error')).toContainText('That API key was not accepted');
+  await expect(page.locator('#error')).not.toContainText(key);
+  await expect(page.locator('#waiting')).toBeHidden();
+  await expect(page.getByLabel('Your Reactor API key')).toBeEditable();
+  expect(tokenRequest.headers()['reactor-api-key']).toBe(key);
+  expect(tokenRequest.postDataJSON().authorization_details[0].constraints.max_sessions).toBe(1);
+  expect(brokerRequests).toBe(0);
+  const storage = await page.evaluate(() => ({ local: { ...localStorage }, session: { ...sessionStorage }, cookie: document.cookie }));
+  expect(JSON.stringify(storage)).not.toContain(key);
+  await page.reload();
+  await expect(page.getByLabel('Your Reactor API key')).toHaveValue('');
+});
+
+test('remix config excludes credentials and clear key resets reveal state', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await boot(page);
+  const key = 'copy-config-test-key';
+  await page.getByLabel('Your Reactor API key').fill(key);
+  await page.getByRole('button', { name: 'Show API key' }).click();
+  await expect(page.getByLabel('Your Reactor API key')).toHaveAttribute('type', 'text');
+  await page.getByRole('button', { name: 'Copy config' }).click();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copied).not.toContain(key);
+  expect(JSON.parse(copied)).toMatchObject({ model: 'reactor/eden-live', source: 'client', inputFps: 24 });
+  await page.getByRole('button', { name: 'Clear key' }).click();
+  await expect(page.getByLabel('Your Reactor API key')).toHaveValue('');
+  await expect(page.getByLabel('Your Reactor API key')).toHaveAttribute('type', 'password');
 });

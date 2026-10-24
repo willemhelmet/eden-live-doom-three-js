@@ -1,0 +1,7 @@
+.env
+.env.*
+.runtime/
+node_modules/
+test-results/
+playwright-report/
+.git/

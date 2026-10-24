@@ -28,7 +28,7 @@ fi
 if [[ ! -f .env ]]; then
   cp .env.example .env
   chmod 600 .env
-  echo "Created $DEMO_ROOT/.env. Add REACTOR_API_KEY there for EdenLive; original Doom needs no key."
+  echo "Created $DEMO_ROOT/.env. Enter your Reactor key in the browser to use EdenLive."
 fi
 
 if command -v sha256sum >/dev/null; then
@@ -44,7 +44,7 @@ npm run build
 
 DEMO_PORT="$(node --input-type=module -e 'process.loadEnvFile(".env");console.log(process.env.PORT || "3210")')"
 [[ "$DEMO_PORT" =~ ^[0-9]+$ ]] || { echo 'Invalid PORT in .env.' >&2; exit 1; }
-DEMO_URL="http://127.0.0.1:$DEMO_PORT/?theater=1"
+DEMO_URL="http://127.0.0.1:$DEMO_PORT/"
 if curl --fail --silent --connect-timeout 1 "http://127.0.0.1:$DEMO_PORT/api/config" >/dev/null; then
   echo "A demo is already listening on port $DEMO_PORT. Close it or choose another PORT in .env." >&2
   exit 1

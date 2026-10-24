@@ -2,34 +2,74 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#10120f"><title>Reactor / DOOM</title>
+  <meta name="theme-color" content="#000000"><title>Doom, remixed live / Reactor</title>
+  <meta name="description" content="A remixable EdenLive developer example. Bring your Reactor API key, change the prompt, and transform a live Three.js game.">
+  <link rel="icon" type="image/svg+xml" href="/brand/symbol-dune.svg">
+  <link rel="preload" href="/brand/fonts/aeonik-regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/brand/fonts/IBMPlexMono-Regular.ttf" as="font" type="font/ttf" crossorigin>
 </head>
 <body>
   <main>
-    <header><a class="wordmark" href="https://reactor.inc" target="_blank" rel="noreferrer"><span class="mark">✳</span> REACTOR</a><span class="edition">DOOM / LIVE WORLD MODEL</span><button id="fullscreen" class="quiet">Fullscreen <kbd>F</kbd></button></header>
-    <section id="stage" aria-label="Doom game">
-      <iframe id="doom" title="Doom local game" src="/doom/?-iwad=doom1.wad&-warp=1%201&-skill=2&-nomusic" allow="autoplay; fullscreen; gamepad" tabindex="0"></iframe>
-      <video id="output" autoplay playsinline muted></video>
-      <canvas id="hud" aria-hidden="true"></canvas>
-      <div id="waiting" hidden><span class="spinner"></span><p id="waiting-text">Connecting to Eden…</p><button id="cancel">Cancel</button></div>
-      <div id="view-label">ORIGINAL / THREE.JS</div>
-      <button id="exit-theater" aria-label="Show demo controls">•••</button>
-      <div id="toast" role="status" hidden></div>
-    </section>
-    <footer>
-      <div class="play-controls"><button id="connect" class="primary" disabled>Loading Doom…</button><button id="view" disabled>Original <kbd>Y</kbd></button><button id="reset" class="quiet">Restart level</button></div>
-      <p id="status" role="status">Loading the local game.</p>
-      <button id="settings" class="quiet" aria-expanded="false">Setup</button>
-    </footer>
-    <section id="setup" hidden>
-      <label for="prompt">Appearance prompt</label>
-      <textarea id="prompt" rows="3" maxlength="4096">First person exploration of a derelict orbital research station reclaimed by dense vegetation. Cinematic practical lighting, worn white panels, warm amber lamps, cold blue shadows, damp metal and delicate ferns. Preserve the exact camera movement, architecture, enemies and weapon silhouette from the source. Coherent realistic materials, stable geometry, no text.</textarea>
-      <div class="setup-row"><label class="file-label">Appearance reference <select id="reference-mode"><option value="greenhouse">Orbital greenhouse</option><option value="raw">Current Doom frame</option></select><input id="reference" type="file" accept="image/png,image/jpeg,image/webp"></label><span id="reference-name">Built-in orbital greenhouse</span><button id="clear-reference" class="quiet">Reset</button></div>
-      <p class="note">Changes apply on the next connection. An art-directed image matching the opening view gives a stronger transformation.</p>
-      <p class="note">Deck: left stick move · right stick turn · RT fire · A use · LT run · bumpers weapons · X start/stop Eden · Y compare · View cycle views · Menu pause · R3 fullscreen. Desktop: WASD · mouse / arrows turn · Ctrl fire · Space use · V compare · F fullscreen · Esc menu.</p>
-      <p class="note"><a href="https://github.com/willemhelmet/eden-live-doom-three-js" target="_blank" rel="noreferrer">Source & setup guide ↗</a></p>
+    <header>
+      <a class="wordmark" href="https://reactor.inc" target="_blank" rel="noreferrer" aria-label="Reactor"><img src="/brand/symbol-wordmark-white.png" alt="Reactor" width="1600" height="184"></a>
+      <span class="edition">EDENLIVE / DEVELOPER EXAMPLE</span>
+      <nav aria-label="Developer resources"><a href="https://docs.reactor.inc/model-api-reference/eden-live/overview" target="_blank" rel="noreferrer">Docs ↗</a><a href="https://github.com/willemhelmet/eden-live-doom-three-js" target="_blank" rel="noreferrer">Get the code ↗</a></nav>
+    </header>
+    <section class="intro">
+      <div><p class="eyebrow">LIVE WORLD MODEL / BRING YOUR OWN KEY</p><h1>Doom, remixed in real time.</h1><p class="intro-copy">Same game. Your world. Change the prompt, swap the reference, then make this example your own.</p></div>
+      <a class="text-link" href="#remix">Remix this example <span>↓</span></a>
     </section>
     <aside id="error" role="alert" hidden></aside>
+    <div class="workbench">
+      <section class="game-panel" aria-label="Live playground">
+        <section id="stage" aria-label="Doom game">
+          <iframe id="doom" title="Doom local game" src="/doom/?-iwad=doom1.wad&-warp=1%201&-skill=2&-nomusic" allow="autoplay; fullscreen; gamepad" tabindex="0"></iframe>
+          <video id="output" autoplay playsinline muted></video>
+          <canvas id="hud" aria-hidden="true"></canvas>
+          <div id="waiting" hidden><span class="spinner"></span><p id="waiting-text">Connecting to Eden…</p><button id="cancel">Cancel</button></div>
+          <div id="view-label">ORIGINAL / THREE.JS</div>
+          <button id="exit-theater" aria-label="Show demo controls">•••</button>
+          <div id="toast" role="status" hidden></div>
+        </section>
+        <footer class="game-controls">
+          <div class="play-controls"><button id="view" disabled>Original <kbd>V</kbd></button><button id="reset" class="quiet">Restart level</button></div>
+          <button id="fullscreen" class="quiet">Fullscreen <kbd>F</kbd></button>
+        </footer>
+        <p class="controls-note">Click the game to play. WASD move · mouse / arrows turn · Ctrl fire · Space use · Esc menu.</p>
+        <div class="pipeline"><span>THREE.JS INPUT</span><span aria-hidden="true">→</span><span>EDENLIVE</span><span aria-hidden="true">→</span><span>YOUR WORLD</span></div>
+      </section>
+      <aside id="setup" class="inspector" aria-label="Remix controls">
+        <section class="connection-panel">
+          <div class="section-heading"><span class="eyebrow">01 / CONNECT</span><a href="https://reactor.inc" target="_blank" rel="noreferrer">Get a key ↗</a></div>
+          <label for="api-key">Your Reactor API key</label>
+          <div class="key-input"><input id="api-key" type="password" placeholder="Paste your API key" autocomplete="off" spellcheck="false" autocapitalize="off" aria-describedby="key-privacy"><button id="show-key" class="quiet" aria-label="Show API key" aria-pressed="false">Show</button></div>
+          <p id="key-privacy" class="note">Kept in this tab. Sent directly to Reactor, never to this site's server. Your account pays for usage.</p>
+          <div class="environment-row"><label for="environment">Environment</label><select id="environment"><option value="production">Production</option><option value="development">Development</option></select><button id="forget-key" class="quiet">Clear key</button></div>
+          <button id="connect" class="primary" disabled>Loading Doom…</button>
+          <p id="status" role="status">Loading the original game.</p>
+        </section>
+        <section class="appearance-panel">
+          <div class="section-heading"><span class="eyebrow">02 / REMIX</span><button id="copy-config" class="quiet">Copy config</button></div>
+          <fieldset id="world-settings">
+            <label for="prompt">Appearance prompt</label>
+            <textarea id="prompt" rows="5" maxlength="4096">First person exploration of a derelict orbital research station reclaimed by dense vegetation. Cinematic practical lighting, worn white panels, warm amber lamps, cold blue shadows, damp metal and delicate ferns. Preserve the exact camera movement, architecture, enemies and weapon silhouette from the source. Coherent realistic materials, stable geometry, no text.</textarea>
+            <label for="reference-mode">Reference image</label>
+            <div class="reference-preview"><img src="/appearance-greenhouse.png" alt="Orbital greenhouse appearance reference"><div><select id="reference-mode"><option value="greenhouse">Orbital greenhouse</option><option value="raw">Current Doom frame</option></select><span id="reference-name">Built-in orbital greenhouse</span></div></div>
+            <div class="reference-actions"><label class="upload-button" for="reference">Upload image<input id="reference" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="clear-reference" class="quiet">Reset</button></div>
+            <label for="seed">Seed</label><input id="seed" type="number" min="0" max="2147483647" value="2026092901" step="1">
+          </fieldset>
+          <p class="note" id="edit-note">Edit before connecting. Stop Eden to change the world.</p>
+        </section>
+      </aside>
+    </div>
+    <section id="remix" class="remix-section">
+      <div class="remix-intro"><p class="eyebrow">OPEN THE SOURCE / MAKE IT YOURS</p><h2>A small example.<br>A starting point for yours.</h2><p>Doom owns the game logic. EdenLive transforms the frames. Swap the scene, reference or prompt and reuse the connection.</p><a class="text-link" href="https://github.com/willemhelmet/eden-live-doom-three-js" target="_blank" rel="noreferrer">Remix on GitHub ↗</a></div>
+      <div class="quickstart"><div class="section-heading"><span class="eyebrow">RUN LOCALLY</span><button id="copy-quickstart" class="quiet">Copy</button></div><pre><code id="quickstart-code">git clone https://github.com/willemhelmet/eden-live-doom-three-js.git
+cd eden-live-doom-three-js
+npm ci
+npm run dev</code></pre><p class="note">No backend credentials to configure. Enter your own key in the browser.</p><div class="source-links"><a href="https://github.com/willemhelmet/eden-live-doom-three-js/blob/main/src/session.ts" target="_blank" rel="noreferrer">session.ts <span>Connection + streaming ↗</span></a><a href="https://github.com/willemhelmet/eden-live-doom-three-js/blob/main/src/doom-bridge.mjs" target="_blank" rel="noreferrer">doom-bridge.mjs <span>Bring your own scene ↗</span></a></div></div>
+    </section>
+    <div class="page-footer"><span>A REACTOR DEVELOPER EXAMPLE</span><span>Game runs locally. Model runs in the cloud.</span></div>
   </main>
   <script type="module" src="/src/main.ts"></script>
 </body>
