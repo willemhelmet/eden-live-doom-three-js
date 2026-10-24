@@ -1,0 +1,233 @@
+// Real-WAD pixel checks for status-bar source parity.
+
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const { chromium } = require('playwright');
+const options = { headless: true };
+if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE) {
+  options.executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
+}
+
+let browser;
+try {
+  browser = await chromium.launch(options);
+  const page = await browser.newPage({ viewport: { width: 640, height: 400 } });
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const url = new URL(process.env.DOOM_URL ?? 'http://127.0.0.1:8134/');
+  url.searchParams.set('-map', 'E1M1');
+  await page.goto(url.href, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() =>
+    window.renderer !== undefined &&
+    window.scene?.getObjectByName('level') !== undefined &&
+    window.renderer.info.render.frame > 2,
+  { timeout: 30000 });
+
+  const result = await page.evaluate(async () => {
+    const doomstat = await import('/src/doomstat.js');
+    const loop = await import('/src/d_loop.js');
+    const status = await import('/src/st_stuff.js');
+    const video = await import('/src/v_video.js');
+    loop.D_DoomRafLoop.stop();
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 320;
+    canvas.height = 200;
+    const ctx = canvas.getContext('2d');
+    const player = doomstat.players[doomstat.consoleplayer];
+    player.health = 100;
+    player.armorpoints = 0;
+    doomstat.set_deathmatch(0);
+    status.ST_Drawer(ctx, 0, 0, 320, 200);
+
+    const actual = ctx.getImageData(0, 0, 320, 200).data;
+    const percent = video.V_DecodePatchToCanvas('STTPRCNT');
+    const patchBytes = percent.canvas.getContext('2d')
+      .getImageData(0, 0, percent.w, percent.h).data;
+    function comparePatch(anchorX, anchorY) {
+      let opaque = 0;
+      let mismatch = 0;
+      for (let y = 0; y < percent.h; y++) {
+        for (let x = 0; x < percent.w; x++) {
+          const pi = (y * percent.w + x) * 4;
+          if (patchBytes[pi + 3] === 0) continue;
+          opaque++;
+          const ax = anchorX - percent.leftoffset + x;
+          const ay = anchorY - percent.topoffset + y;
+          const ai = (ay * 320 + ax) * 4;
+          for (let c = 0; c < 4; c++) {
+            if (actual[ai + c] !== patchBytes[pi + c]) mismatch++;
+          }
+        }
+      }
+      return { opaque, mismatch };
+    }
+    const percentResult = {
+      healthPercent: comparePatch(90, 171),
+      armorPercent: comparePatch(221, 171),
+    };
+
+    function patch(target, name, x, y) {
+      video.V_DrawPatchAtCanvas(
+        target, video.V_DecodePatchToCanvas(name), x, y, 1, 1,
+      );
+    }
+    function middleMismatch(actualCanvas, expectedCanvas) {
+      const a = actualCanvas.getContext('2d').getImageData(104, 168, 39, 32).data;
+      const e = expectedCanvas.getContext('2d').getImageData(104, 168, 39, 32).data;
+      let mismatch = 0;
+      for (let i = 0; i < a.length; i++) if (a[i] !== e[i]) mismatch++;
+      return mismatch;
+    }
+    function renderStatus() {
+      const value = document.createElement('canvas');
+      value.width = 320;
+      value.height = 200;
+      status.ST_Drawer(value.getContext('2d'), 0, 0, 320, 200);
+      return value;
+    }
+    function expectedMiddle(showArms) {
+      const value = document.createElement('canvas');
+      value.width = 320;
+      value.height = 200;
+      const target = value.getContext('2d');
+      patch(target, 'STBAR', 0, 168);
+      if (showArms) {
+        patch(target, 'STARMS', 104, 168);
+        const cells = [
+          [111, 172, 2], [123, 172, 3], [135, 172, 4],
+          [111, 182, 5], [123, 182, 6], [135, 182, 7],
+        ];
+        for (const [x, y, digit] of cells) patch(target, `STYSNUM${digit}`, x, y);
+      } else {
+        patch(target, 'STTNUM1', 110, 171);
+        patch(target, 'STTNUM2', 124, 171);
+      }
+      return value;
+    }
+
+    player.weaponowned.fill(true);
+    doomstat.set_deathmatch(0);
+    const normal = renderStatus();
+    const normalMiddleMismatch = middleMismatch(normal, expectedMiddle(true));
+
+    player.frags.fill(0);
+    player.frags[0] = 3;
+    player.frags[1] = 10;
+    player.frags[2] = 5; // 10 + 5 - 3 = 12.
+    doomstat.set_deathmatch(1);
+    const deathmatch = renderStatus();
+    const deathmatchMiddleMismatch = middleMismatch(deathmatch, expectedMiddle(false));
+    doomstat.set_deathmatch(0);
+
+    function imageMismatch(aCanvas, bCanvas, x, y, width, height) {
+      const a = aCanvas.getContext('2d').getImageData(x, y, width, height).data;
+      const b = bCanvas.getContext('2d').getImageData(x, y, width, height).data;
+      let mismatch = 0;
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) mismatch++;
+      return mismatch;
+    }
+    player.cards.fill(false);
+    player.cards[3] = true;
+    const skullOnly = renderStatus();
+    player.cards[0] = true;
+    const cardAndSkull = renderStatus();
+    player.cards[3] = false;
+    const cardOnly = renderStatus();
+    const keyRegion = [238, 168, 12, 13];
+    const combinedVsSkullMismatch = imageMismatch(cardAndSkull, skullOnly, ...keyRegion);
+    const cardVsSkullMismatch = imageMismatch(cardOnly, skullOnly, ...keyRegion);
+    player.cards.fill(false);
+
+    // Reconstruct the complete ammo region from the real STBAR/STYSNUM WAD
+    // patches. Distinct single digits make a CELL/RCKT row swap observable.
+    for (let i = 0; i < 4; i++) {
+      player.ammo[i] = i + 1;
+      player.maxammo[i] = i + 5;
+    }
+    const ammoStatus = renderStatus();
+    const expectedAmmo = document.createElement('canvas');
+    expectedAmmo.width = 320;
+    expectedAmmo.height = 200;
+    const ammoTarget = expectedAmmo.getContext('2d');
+    patch(ammoTarget, 'STBAR', 0, 168);
+    const ammoRows = [173, 179, 191, 185];
+    for (let i = 0; i < 4; i++) {
+      const current = video.V_DecodePatchToCanvas(`STYSNUM${i + 1}`);
+      const maximum = video.V_DecodePatchToCanvas(`STYSNUM${i + 5}`);
+      ammoTarget.drawImage(current.canvas, 288 - current.w, ammoRows[i]);
+      ammoTarget.drawImage(maximum.canvas, 314 - maximum.w, ammoRows[i]);
+    }
+    const ammoRegionMismatch = imageMismatch(ammoStatus, expectedAmmo, 270, 168, 50, 32);
+
+    // STFB0 belongs between STBAR and the face. Rebuild that isolated region
+    // from WAD patches, and also prove it remains absent outside a netgame.
+    doomstat.set_consoleplayer(0);
+    doomstat.set_netgame(false);
+    status.ST_Start();
+    const singleFace = renderStatus();
+    doomstat.set_netgame(true);
+    status.ST_Start();
+    const netFace = renderStatus();
+    const expectedSingleFace = document.createElement('canvas');
+    expectedSingleFace.width = 320;
+    expectedSingleFace.height = 200;
+    const singleFaceTarget = expectedSingleFace.getContext('2d');
+    patch(singleFaceTarget, 'STBAR', 0, 168);
+    patch(singleFaceTarget, 'STFST00', 143, 168);
+    const expectedNetFace = document.createElement('canvas');
+    expectedNetFace.width = 320;
+    expectedNetFace.height = 200;
+    const netFaceTarget = expectedNetFace.getContext('2d');
+    patch(netFaceTarget, 'STBAR', 0, 168);
+    patch(netFaceTarget, 'STFB0', 143, 168);
+    patch(netFaceTarget, 'STFST00', 143, 168);
+    // STARMS occupies the x=143 edge column; the remaining 23 columns are an
+    // isolated face/backing crop.
+    const singleFaceMismatch = imageMismatch(singleFace, expectedSingleFace, 144, 168, 23, 32);
+    const netFaceMismatch = imageMismatch(netFace, expectedNetFace, 144, 168, 23, 32);
+    const faceBackingDifference = imageMismatch(singleFace, netFace, 144, 168, 23, 32);
+    doomstat.set_netgame(false);
+
+    return {
+      ...percentResult,
+      normalMiddleMismatch,
+      deathmatchMiddleMismatch,
+      combinedVsSkullMismatch,
+      cardVsSkullMismatch,
+      ammoRegionMismatch,
+      singleFaceMismatch,
+      netFaceMismatch,
+      faceBackingDifference,
+    };
+  });
+
+  const failures = [];
+  for (const [name, value] of Object.entries({
+    healthPercent: result.healthPercent,
+    armorPercent: result.armorPercent,
+  })) {
+    if (value.opaque === 0 || value.mismatch !== 0) {
+      failures.push(`${name}: ${JSON.stringify(value)}`);
+    }
+  }
+  if (result.normalMiddleMismatch !== 0 || result.deathmatchMiddleMismatch !== 0) {
+    failures.push(`middle widgets: ${JSON.stringify(result)}`);
+  }
+  if (result.combinedVsSkullMismatch !== 0 || result.cardVsSkullMismatch === 0) {
+    failures.push(`key override: ${JSON.stringify(result)}`);
+  }
+  if (result.ammoRegionMismatch !== 0) {
+    failures.push(`ammo counters: ${JSON.stringify(result)}`);
+  }
+  if (result.singleFaceMismatch !== 0 || result.netFaceMismatch !== 0
+      || result.faceBackingDifference === 0) {
+    failures.push(`face backing: ${JSON.stringify(result)}`);
+  }
+  if (errors.length !== 0) failures.push(`page errors: ${errors.join('; ')}`);
+  if (failures.length !== 0) throw new Error(failures.join('\n'));
+  console.log(JSON.stringify(result));
+} finally {
+  if (browser !== undefined) await browser.close();
+}
