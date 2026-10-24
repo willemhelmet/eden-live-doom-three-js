@@ -2,11 +2,18 @@ import { test, expect } from '@playwright/test';
 
 async function boot(page) {
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Start Eden', exact: true })).toBeEnabled({ timeout: 40_000 });
+  await expect.poll(() => page.frames().find(frame => frame.url().includes('/doom/'))?.evaluate(() => !!window.doomBridge?.ready), { timeout: 40_000 }).toBe(true);
   return page.frames().find((frame) => frame.url().includes('/doom/'));
 }
 
-test('Doom boots without a key with a nonblank source', async ({ page }) => {
+async function acceptTestKey(page) {
+  await page.route('https://api.reactor.inc/tokens', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jwt: 'fake-validation-token' }) }));
+  await page.getByLabel('Your Reactor API key').fill('visitor-test-key');
+  await page.getByRole('button', { name: 'Use key', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Start Eden', exact: true })).toBeEnabled();
+}
+
+test('Doom renders a preview but remains locked without a validated key', async ({ page }) => {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   const frame = await boot(page);
@@ -20,11 +27,23 @@ test('Doom boots without a key with a nonblank source', async ({ page }) => {
   });
   expect(image).toBeGreaterThan(.2);
   expect(errors).toEqual([]);
+  await expect(page.getByRole('button', { name: 'Start Eden', exact: true })).toBeDisabled();
+  await expect(page.locator('#stage')).toHaveAttribute('data-locked', 'true');
+  const before = await frame.evaluate(() => window.doomBridge.pose);
+  await page.locator('#doom').focus();
+  await page.keyboard.down('w');
+  await frame.evaluate(() => {
+    Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [{ connected: true, mapping: 'standard', axes: [0, -1, .7, 0], buttons: Array.from({ length: 16 }, () => ({ pressed: false, value: 0 })) }] });
+  });
+  await page.waitForTimeout(250);
+  await page.keyboard.up('w');
+  expect(await frame.evaluate(() => window.doomBridge.pose)).toEqual(before);
   await page.screenshot({ path: 'test-results/doom-deck-original.png' });
 });
 
 test('keyboard and analog gamepad move the real Doom player; unplug releases movement', async ({ page }) => {
   const frame = await boot(page);
+  await acceptTestKey(page);
   const before = await frame.evaluate(() => window.doomBridge.pose);
   await page.locator('#doom').focus();
   await page.keyboard.down('w');
@@ -59,14 +78,18 @@ test('keyboard and analog gamepad move the real Doom player; unplug releases mov
   expect(stopped.angle).toEqual(released.angle);
 });
 
-test('cloud failures return to the playable original, and restart boots a fresh level', async ({ page }) => {
+test('a rejected saved key restores the locked preview, and restart reloads the level', async ({ page }) => {
   await boot(page);
+  await acceptTestKey(page);
+  await page.route('https://api.reactor.inc/tokens', route => route.fulfill({ status: 401, contentType: 'application/json', body: '{}' }));
   await page.getByRole('button', { name: 'Start Eden', exact: true }).click();
-  await expect(page.locator('#key-message')).toContainText('Add your Reactor API key');
+  await expect(page.locator('#key-message')).toContainText('That API key was not accepted');
   await expect(page.locator('#waiting')).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Start Eden', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Start Eden', exact: true })).toBeDisabled();
+  await expect(page.locator('#stage')).toHaveAttribute('data-locked', 'true');
   await page.getByRole('button', { name: 'Restart level', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Start Eden', exact: true })).toBeEnabled({ timeout: 40_000 });
+  await expect(page.locator('#doom')).toHaveAttribute('src', /take=/);
+  await expect.poll(() => page.frames().find(frame => frame.url().includes('take='))?.evaluate(() => !!window.doomBridge?.ready), { timeout: 40_000 }).toBe(true);
   await expect(page.locator('#stage')).toHaveAttribute('data-view', 'raw');
 });
 
@@ -90,7 +113,7 @@ test('BYOK requests go directly to Reactor and failures never echo keys', async 
   });
   await boot(page);
   await page.getByLabel('Your Reactor API key').fill(key);
-  await page.getByRole('button', { name: 'Start Eden', exact: true }).click();
+  await page.getByRole('button', { name: 'Use key', exact: true }).click();
   await expect(page.locator('#key-message')).toContainText('That API key was not accepted');
   await expect(page.locator('#key-message')).not.toContainText(key);
   await expect(page.locator('#waiting')).toBeHidden();
@@ -138,10 +161,14 @@ test('Use key validates without starting a model session and clearing restores t
   await page.getByRole('button', { name: 'Use key', exact: true }).click();
   await expect(page.locator('#key-alert')).toBeHidden();
   await expect(page.locator('#key-summary')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start Eden', exact: true })).toBeEnabled();
+  await expect(page.locator('#stage')).toHaveAttribute('data-locked', 'false');
   await expect(page.locator('#waiting')).toBeHidden();
   expect(modelRequests).toBe(0);
   await page.getByRole('button', { name: 'Clear key' }).click();
   await expect(page.locator('#key-alert')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start Eden', exact: true })).toBeDisabled();
+  await expect(page.locator('#stage')).toHaveAttribute('data-locked', 'true');
   await expect(page.getByLabel('Your Reactor API key')).toHaveValue('');
   await page.getByLabel('Your Reactor API key').fill('rejected-test-key');
   await page.getByRole('button', { name: 'Use key', exact: true }).click();

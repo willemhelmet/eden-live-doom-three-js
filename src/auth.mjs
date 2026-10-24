@@ -8,7 +8,7 @@ export class ReactorAuthError extends Error {
 }
 
 export async function mintToken({ apiKey, apiUrl, signal }, fetchImpl = fetch) {
-  if (!apiKey?.trim()) throw new Error('Add your Reactor API key to start EdenLive. You can play the original without one.');
+  if (!apiKey?.trim()) throw new Error('Add your Reactor API key to start EdenLive.');
   if (!Object.values(REACTOR_ENDPOINTS).includes(apiUrl)) throw new Error('Choose an official Reactor API endpoint.');
   const response = await fetchImpl(`${apiUrl}/tokens`, {
     method: 'POST', signal, credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer',
